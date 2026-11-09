@@ -33,6 +33,13 @@ def create_app(test_config=None):
         app.config.update(test_config)
     os.makedirs(os.path.dirname(app.config["DATABASE"]), exist_ok=True)
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    # optional: API key for AI drafting kept in a file next to the data (never inside the code folder)
+    key_file = os.path.join(os.path.dirname(app.config["DATABASE"]), "anthropic_key.txt")
+    if not os.environ.get("ANTHROPIC_API_KEY") and os.path.isfile(key_file):
+        with open(key_file, encoding="utf8") as fh:
+            key = fh.read().strip()
+        if key:
+            os.environ["ANTHROPIC_API_KEY"] = key
 
     app.teardown_appcontext(store.close_db)
     with app.app_context():

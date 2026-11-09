@@ -92,6 +92,9 @@ export ANTHROPIC_API_KEY=sk-ant-...      # Windows: set ANTHROPIC_API_KEY=sk-ant
 python run.py
 ```
 
+Or save the key once in a file named `anthropic_key.txt` inside your data folder (`Documents/SAB-Data`):
+`echo sk-ant-... > ~/Documents/SAB-Data/anthropic_key.txt` – the app reads it at start-up.
+
 The model defaults to `claude-opus-5-5`; override with `SAB_CLAUDE_MODEL`. Without a key the app works fully and
 uses template drafts.
 
