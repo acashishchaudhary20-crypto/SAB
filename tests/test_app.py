@@ -193,3 +193,24 @@ def test_compose_letter_ai(client, monkeypatch):
     r = client.post("/compose", data={"kind": "letter", "request_text": "Letter to contractor on EOT-2", "action": "save",
                                       "content": "LETTER BODY", "subject": "EOT-2", "ref_letters": "IE/1056"}, follow_redirects=True)
     assert b"Draft" in r.data and b"IE/1056" in r.data
+
+
+def test_local_folder_import(client, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / "Desktop" / "SAB Files" / "Letters").mkdir(parents=True)
+    (home / "Desktop" / "SAB Files" / "Letters" / "Letter no 702 dated 01.10.2026.pdf").write_bytes(b"%PDF")
+    (home / "Desktop" / "SAB Files" / "MoM site meeting.txt").write_text("minutes")
+    monkeypatch.setenv("HOME", str(home))
+    d = client.get("/import/folders").get_json()
+    assert "Desktop" in [x["name"] for x in d["dirs"]]
+    d = client.get("/import/folders", query_string={"path": str(home / "Desktop")}).get_json()
+    assert d["dirs"][0]["name"] == "SAB Files"
+    root = d["dirs"][0]["path"]
+    files = client.post("/import/list", data={"path": root}).get_json()["files"]
+    assert len(files) == 2
+    for fpath in files:
+        r = client.post("/import", data={"local_path": fpath, "root": root, "ajax": "1"}).get_json()
+        assert r["results"][0]["status"] == "imported"
+    # outside home or from another computer is refused
+    assert client.get("/import/folders", query_string={"path": "/etc"}).status_code == 400
+    assert client.get("/import/folders", environ_base={"REMOTE_ADDR": "192.168.1.9"}).status_code == 403

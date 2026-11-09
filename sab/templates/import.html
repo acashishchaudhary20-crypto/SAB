@@ -8,22 +8,36 @@ category and document type are read from the file name and the text inside PDFs 
 Files imported before are skipped automatically, so you can run this again any time.</p>
 
 <section class="card">
-  <h2>1. Choose files</h2>
-  <div class="actions">
-    <label class="btn">📁 Choose a whole folder<input type="file" id="pickFolder" webkitdirectory multiple hidden></label>
-    <label class="btn ghost">📄 Choose individual files<input type="file" id="pickFiles" multiple hidden></label>
+  <h2>1. Choose the folder on this computer</h2>
+  <p class="small muted">Click a folder to open it; click <strong>Import this folder</strong> when you are inside the right one. Sub-folders are included.</p>
+  <div class="actions" style="margin-bottom:8px">
+    <button type="button" class="btn sm ghost" id="fbHome">⌂ Start</button>
+    <button type="button" class="btn sm ghost" id="fbUp">↑ Up</button>
+    <code id="fbPath" class="small"></code>
   </div>
-  <p class="small muted">Tip: in the folder window, Google Drive and OneDrive appear in the left sidebar under <em>Locations</em>.
-    Choosing a folder includes all its sub-folders.</p>
-  <p id="picked" class="small"></p>
+  <div class="src-list" id="fbList"></div>
+  <p class="small" id="fbInfo"></p>
+  <div class="actions"><button type="button" class="btn" id="fbImport" disabled>⇪ Import this folder</button></div>
+  <p class="small muted">If a folder says macOS did not allow access: open <em>System Settings → Privacy &amp; Security → Files &amp; Folders</em>
+    (or <em>Full Disk Access</em>) and switch on <strong>Terminal</strong>, then restart SAB.</p>
 
-  <h2>2. File them as</h2>
+  <details style="margin-top:10px"><summary class="small">Other way: pick files with the browser window</summary>
+    <div class="actions" style="margin-top:8px">
+      <button type="button" class="btn sm ghost" onclick="document.getElementById('pickFolder').click()">📁 Choose a whole folder</button>
+      <button type="button" class="btn sm ghost" onclick="document.getElementById('pickFiles').click()">📄 Choose individual files</button>
+      <input type="file" id="pickFolder" webkitdirectory multiple style="position:absolute;left:-9999px">
+      <input type="file" id="pickFiles" multiple style="position:absolute;left:-9999px">
+    </div>
+    <p id="picked" class="small"></p>
+    <button class="btn sm" id="start" disabled>Start import of picked files</button>
+  </details>
+
+  <h2 style="margin-top:16px">2. File them as</h2>
   <label><select id="register">
     <option value="">Automatic (names with Letter / Ltr / Notice / Reply… → Letters; everything else → Documents)</option>
     <option value="letters">All as Letters</option>
     <option value="documents">All as Documents</option>
   </select></label>
-  <div class="actions"><button class="btn" id="start" disabled>Start import</button></div>
   <div class="bar" id="bar" hidden><div class="bar-act" id="barFill" style="width:0;height:14px;top:0"></div></div>
   <p id="progress" class="small"></p>
 </section>
@@ -59,25 +73,58 @@ function addRow(r) {
   tr.children[0].textContent = r.name; tr.children[3].textContent = r.note || '';
   document.getElementById('results').appendChild(tr);
 }
-document.getElementById('start').onclick = async () => {
-  const btn = document.getElementById('start'); btn.disabled = true;
+async function runImport(items, makeForm) {
   document.getElementById('resultsCard').hidden = false; document.getElementById('bar').hidden = false;
   let done = 0, ok = 0;
-  for (const f of files) {
-    const fd = new FormData();
-    fd.append('files', f, f.webkitRelativePath || f.name);
+  for (const item of items) {
+    const fd = makeForm(item);
     fd.append('register', document.getElementById('register').value);
     fd.append('ajax', '1');
+    const f = {name: item.name || item};
     try {
       const res = await fetch('{{ url_for("import_view") }}', {method: 'POST', body: fd});
       const data = await res.json();
       data.results.forEach(r => { addRow(r); if (r.status === 'imported') ok++; });
     } catch (e) { addRow({name: f.name, status: 'error', note: String(e)}); }
     done++;
-    document.getElementById('barFill').style.width = (done / files.length * 100) + '%';
-    document.getElementById('progress').textContent = `${done} / ${files.length} processed · ${ok} imported`;
+    document.getElementById('barFill').style.width = (done / items.length * 100) + '%';
+    document.getElementById('progress').textContent = `${done} / ${items.length} processed · ${ok} imported`;
   }
   document.getElementById('progress').textContent += ' · Finished ✔';
+}
+document.getElementById('start').onclick = () => {
+  document.getElementById('start').disabled = true;
+  runImport(files, f => { const fd = new FormData(); fd.append('files', f, f.webkitRelativePath || f.name); return fd; });
 };
+
+// ---- folder browser (reads folders on this computer directly) ----
+let cur = null, parent = null;
+async function openFolder(path) {
+  const r = await fetch('{{ url_for("import_folders") }}' + (path ? '?path=' + encodeURIComponent(path) : ''));
+  if (!r.ok) { document.getElementById('fbInfo').textContent = 'Cannot open: ' + (await r.text()).replace(/<[^>]+>/g, ' ').trim().slice(0, 200); return; }
+  const d = await r.json();
+  cur = d.path; parent = d.parent;
+  document.getElementById('fbPath').textContent = cur || 'Choose a starting place';
+  const list = document.getElementById('fbList'); list.innerHTML = '';
+  d.dirs.forEach(x => {
+    const a = document.createElement('label'); a.style.cursor = 'pointer';
+    a.textContent = '📁 ' + x.name; a.onclick = () => openFolder(x.path); list.appendChild(a);
+  });
+  if (!d.dirs.length) list.innerHTML = '<label class="muted">No sub-folders</label>';
+  document.getElementById('fbInfo').textContent = d.error ? d.error : (cur ? `${d.files} file(s) directly in this folder (sub-folders are included in the import)` : '');
+  document.getElementById('fbImport').disabled = !cur || !!d.error;
+  document.getElementById('fbUp').disabled = !cur;
+}
+document.getElementById('fbHome').onclick = () => openFolder(null);
+document.getElementById('fbUp').onclick = () => openFolder(parent);
+document.getElementById('fbImport').onclick = async () => {
+  const btn = document.getElementById('fbImport'); btn.disabled = true;
+  const fd = new FormData(); fd.append('path', cur);
+  const d = await (await fetch('{{ url_for("import_list") }}', {method: 'POST', body: fd})).json();
+  if (!confirm(`Import ${d.files.length} file(s) from\n${d.root} ?`)) { btn.disabled = false; return; }
+  await runImport(d.files, p => { const f = new FormData(); f.append('local_path', p); f.append('root', d.root); return f; });
+  btn.disabled = false;
+};
+openFolder(null);
 </script>
 {% endblock %}

@@ -417,6 +417,64 @@ def _register_routes(app):
             return redirect(url_for("settings_view"))
         return render_template("settings.html", fields=SETTINGS_FIELDS, roles=ROLES)
 
+    def _local_only():
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            abort(403, "Browsing this computer's folders is only allowed on the computer running SAB.")
+
+    def _safe_dir(path):
+        home = os.path.realpath(os.path.expanduser("~"))
+        real = os.path.realpath(os.path.expanduser(path or "~"))
+        if not (real == home or real.startswith(home + os.sep)) or not os.path.isdir(real):
+            abort(400, "Folder not found or outside your home folder.")
+        return real
+
+    def _start_folders():
+        home = os.path.expanduser("~")
+        out = [(n, os.path.join(home, n)) for n in ("Desktop", "Documents", "Downloads")]
+        cloud = os.path.join(home, "Library", "CloudStorage")
+        if os.path.isdir(cloud):
+            for n in sorted(os.listdir(cloud)):
+                full = os.path.join(cloud, n)
+                if os.path.isdir(full) and not n.startswith("."):
+                    my_drive = os.path.join(full, "My Drive")
+                    label = n.split("-")[0].replace("GoogleDrive", "Google Drive")
+                    out.append((f"{label} ({n.split('-', 1)[-1]})" if "-" in n else label,
+                                my_drive if os.path.isdir(my_drive) else full))
+        return [(n, p) for n, p in out if os.path.isdir(p)]
+
+    @app.route("/import/folders")
+    def import_folders():
+        _local_only()
+        if not request.args.get("path"):
+            return {"path": None, "parent": None, "dirs": [{"name": n, "path": p} for n, p in _start_folders()], "files": 0}
+        path = _safe_dir(request.args["path"])
+        dirs, files = [], 0
+        try:
+            for n in sorted(os.listdir(path), key=str.lower):
+                full = os.path.join(path, n)
+                if n.startswith("."):
+                    continue
+                if os.path.isdir(full):
+                    dirs.append({"name": n, "path": full})
+                else:
+                    files += 1
+        except PermissionError:
+            return {"error": "macOS did not allow access to this folder. See the note on this page.", "path": path,
+                    "parent": os.path.dirname(path), "dirs": [], "files": 0}
+        return {"path": path, "parent": os.path.dirname(path), "dirs": dirs, "files": files}
+
+    @app.route("/import/list", methods=["POST"])
+    def import_list():
+        _local_only()
+        root = _safe_dir(request.form.get("path"))
+        found = []
+        for dirpath, dnames, fnames in os.walk(root):
+            dnames[:] = [d for d in dnames if not d.startswith(".")]
+            for n in sorted(fnames):
+                if not n.startswith("."):
+                    found.append(os.path.join(dirpath, n))
+        return {"root": root, "files": found}
+
     @app.route("/import", methods=["GET", "POST"])
     def import_view():
         if request.method == "GET":
@@ -425,6 +483,19 @@ def _register_routes(app):
         if force not in (None, "letters", "documents"):
             force = None
         results = []
+        local = request.form.get("local_path")
+        if local:
+            _local_only()
+            root = _safe_dir(request.form.get("root"))
+            real = os.path.realpath(local)
+            if not real.startswith(root + os.sep) or not os.path.isfile(real):
+                abort(400)
+            rel = os.path.join(os.path.basename(root), os.path.relpath(real, root))
+            try:
+                results.append(importer.import_file(real, rel, app.config["UPLOAD_FOLDER"], ALLOWED_EXT, force))
+            except Exception as e:
+                results.append({"name": rel, "status": "error", "module": None, "id": None, "note": str(e)})
+            return {"results": results}
         tmp = os.path.join(app.config["UPLOAD_FOLDER"], ".incoming")
         os.makedirs(tmp, exist_ok=True)
         for f in request.files.getlist("files"):
