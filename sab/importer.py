@@ -220,3 +220,16 @@ def import_file(src_path, original_name, upload_folder, allowed_ext, force=None)
     res.update(status="imported", module=module, id=rid,
                note="text extracted" if text.strip() else ("no text (scanned?)" if ext == "pdf" else ""))
     return res
+
+
+def attachment_path(value, upload_folder):
+    """Absolute path of a record's attachment: a copied upload or a file in a connected folder."""
+    if not value:
+        return None
+    if value.startswith("watch:"):
+        from . import sync
+        try:
+            return sync.watched_path(int(value.split(":")[1]))
+        except (ValueError, IndexError):
+            return None
+    return os.path.join(upload_folder, value)

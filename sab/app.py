@@ -10,7 +10,9 @@ from werkzeug.utils import secure_filename
 
 from . import db as store
 from . import drafting
+from . import assistant
 from . import compose
+from . import sync
 from . import importer
 from .modules import MODULES, ROLES, SETTINGS_FIELDS, field_map
 
@@ -71,6 +73,14 @@ def create_app(test_config=None):
         return f"{f:,.0f}" if f == int(f) else f"{f:,.2f}"
 
     _register_routes(app)
+    with app.app_context():
+        sync.ensure_tables(store.get_db())
+        try:
+            minutes = int(store.get_settings().get("sync_minutes") or 10)
+        except ValueError:
+            minutes = 10
+    if not app.config.get("TESTING") and os.environ.get("SAB_NO_SYNC") != "1":
+        sync.start_background(app, ALLOWED_EXT, minutes)
     return app
 
 
@@ -429,18 +439,7 @@ def _register_routes(app):
         return real
 
     def _start_folders():
-        home = os.path.expanduser("~")
-        out = [(n, os.path.join(home, n)) for n in ("Desktop", "Documents", "Downloads")]
-        cloud = os.path.join(home, "Library", "CloudStorage")
-        if os.path.isdir(cloud):
-            for n in sorted(os.listdir(cloud)):
-                full = os.path.join(cloud, n)
-                if os.path.isdir(full) and not n.startswith("."):
-                    my_drive = os.path.join(full, "My Drive")
-                    label = n.split("-")[0].replace("GoogleDrive", "Google Drive")
-                    out.append((f"{label} ({n.split('-', 1)[-1]})" if "-" in n else label,
-                                my_drive if os.path.isdir(my_drive) else full))
-        return [(n, p) for n, p in out if os.path.isdir(p)]
+        return sync.suggested_folders()
 
     @app.route("/import/folders")
     def import_folders():
@@ -592,6 +591,63 @@ def _register_routes(app):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         compose.to_docx(content, path)
         return send_from_directory(os.path.dirname(path), os.path.basename(path), as_attachment=True)
+
+    # ------------------------------------------------------------ connected folders (auto sync)
+    @app.route("/sync", methods=["GET", "POST"])
+    def sync_view():
+        if request.method == "POST":
+            _local_only()
+            action = request.form.get("action")
+            if action == "add":
+                path = _safe_dir(request.form.get("path"))
+                sync.add_folder(path, request.form.get("label") or None)
+                flash(f"Connected: {path}. Indexing starts now.", "ok")
+                action = "run"
+            elif action == "add_all":
+                for label, path in sync.suggested_folders():
+                    if label not in ("Documents", "Downloads"):
+                        sync.add_folder(path, label)
+                flash("Connected Desktop and all cloud drives found. Indexing starts now.", "ok")
+                action = "run"
+            elif action == "remove":
+                sync.remove_folder(int(request.form.get("id")))
+                flash("Folder disconnected (records already created are kept).", "ok")
+            if action == "run" and not sync.status["running"]:
+                import threading
+                threading.Thread(target=sync.run_sync, args=(app, ALLOWED_EXT), daemon=True).start()
+            return redirect(url_for("sync_view"))
+        return render_template("sync.html", folders=sync.folders(enabled_only=True),
+                               suggested=sync.suggested_folders(), status=sync.status)
+
+    @app.route("/sync/status")
+    def sync_status():
+        return dict(sync.status)
+
+    @app.route("/wf/<int:wid>")
+    def watched_file(wid):
+        from flask import send_file
+        path = sync.watched_path(wid)
+        if not path or not os.path.isfile(path):
+            abort(404, "This file has been moved or deleted from the connected folder.")
+        return send_file(path)
+
+    # ------------------------------------------------------------ assistant (give a task in plain words)
+    @app.route("/assistant")
+    def assistant_view():
+        return render_template("assistant.html")
+
+    @app.route("/assistant/ask", methods=["POST"])
+    def assistant_ask():
+        if not drafting.ai_available():
+            return {"error": "The assistant needs an Anthropic API key. Save it in anthropic_key.txt in your "
+                             "SAB-Data folder (see README) and restart SAB."}, 400
+        text = (request.form.get("message") or "").strip()
+        cid = request.form.get("cid") or assistant.new_conversation()
+        if not text:
+            return {"error": "Type a task first."}, 400
+        result = assistant.ask(cid, text)
+        result["cid"] = cid
+        return result
 
     @app.route("/uploads/<path:name>")
     def uploaded(name):

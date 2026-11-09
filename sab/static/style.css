@@ -67,3 +67,13 @@ table.kv th { width: 20%; }
 .steps { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .steps span { padding: 4px 10px; border-radius: 999px; background: #eef2f6; font-size: 12px; color: var(--muted); }
 .steps span.on { background: var(--brand); color: #fff; }
+#chat { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.msg { max-width: 92%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+.msg.user { align-self: flex-end; background: #e8f1f7; border-color: #cfe0ec; }
+.msg.bot { align-self: flex-start; }
+.msg .acts { margin-top: 8px; padding: 8px 10px; background: var(--ok-bg); border-radius: 6px; font-size: 13px; }
+.msg .acts ul { margin: 4px 0 0; padding-left: 18px; }
+.msg .err { color: var(--warn); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; color: var(--ink); }
+.chip:hover { background: #f1f5f8; }

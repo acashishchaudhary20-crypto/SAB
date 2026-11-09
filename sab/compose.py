@@ -155,8 +155,9 @@ def build_content(kind, request_text, selected, settings, upload_folder, extra_p
         att = row["attachment"] if "attachment" in row.keys() else None
         text_len = len((row["body"] if module == "letters" else row["description"] if module == "documents" else "") or "")
         if att and att.lower().endswith(".pdf") and text_len < 200:
-            path = os.path.join(upload_folder, att)
-            if os.path.isfile(path):
+            from .importer import attachment_path
+            path = attachment_path(att, upload_folder)
+            if path and os.path.isfile(path):
                 size = os.path.getsize(path)
                 if size <= MAX_PDF_BYTES and pdf_total + size <= MAX_PDF_TOTAL:
                     pdf_total += size

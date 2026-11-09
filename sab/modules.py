@@ -204,6 +204,7 @@ SETTINGS_FIELDS = [
     ("contract_price_cr", "Contract Price (₹ Cr)", ""),
     ("signatory_name", "Signatory Name", ""),
     ("signatory_designation", "Signatory Designation", "Project Manager"),
+    ("sync_minutes", "Re-check connected folders every (minutes)", "10"),
 ]
 
 ROLES = ["Contractor", "Authority / Employer", "Authority's Engineer"]

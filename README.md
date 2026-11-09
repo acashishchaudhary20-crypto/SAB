@@ -26,6 +26,29 @@ On any letter or dispute click **Answer** / **Draft DRB submission**:
 
 Drafts are a starting point: check every fact, date, amount and clause before issue.
 
+## 🔗 Connected Folders – Desktop, OneDrive, Google Drive always up to date
+
+Sidebar → **🔗 Connected Folders** → **⚡ Connect Desktop + all cloud drives found** (or connect only chosen project
+folders). Every document in them is indexed – letters, notes, PDFs, Word, Excel, images – **without copying the files**.
+SAB re-checks every 10 minutes (Project Settings → *Re-check connected folders every*): new files are added, edited files
+re-read, deleted / moved files marked missing (records kept). First indexing of a big cloud drive takes time because each
+file is downloaded once to be read. If macOS blocks access: System Settings → Privacy & Security → Full Disk Access →
+Terminal.
+
+## 🤖 Assistant – give a task in plain words
+
+Sidebar → **🤖 Assistant**. Type a task in English or Hindi, e.g.
+
+- *"Which letters are pending reply and overdue?"*
+- *"Summarise all correspondence on POWERGRID line shifting chronologically."*
+- *"Prepare a note for approval of the contractor's EOT application based on all relevant letters and save it."*
+- *"Draft a letter to the contractor asking compliance of IE letter 1056 within 7 days."*
+- *"Mark letter 115 reply required by 20 Nov."* · *"Add today's DPR: GSB 450 cum at Ch 5+000–5+800 LHS."*
+
+Claude searches all records and connected-folder files, opens the original documents (including scanned PDFs), does the
+work, saves notes / draft letters, and lists every change it made with links. Follow-up questions continue the same
+conversation. Needs the API key (below). The records and files it reads are sent to the Anthropic API for that task.
+
 ## Bring in all your existing files in one go
 
 Sidebar → **⇪ Bulk Import Files** → **Choose a whole folder** (Desktop, Downloads, Google Drive, OneDrive, pen drive –
@@ -121,6 +144,8 @@ seed_demo.py            sample data
 sab/modules.py          register definitions (fields, categories, activities, statuses)
 sab/db.py               SQLite storage
 sab/app.py              web routes (registers, dashboard, MPR generation, drafting, search, settings)
+sab/assistant.py        Assistant: Claude tool loop over the project database and files
+sab/sync.py             connected folders: background indexing of Desktop / OneDrive / Google Drive
 sab/compose.py          on-demand notes / letters: record search, AI prompt, Word export
 sab/importer.py         bulk import: auto-filing, text extraction, duplicate check
 sab/drafting.py         letter / DRB template drafts and Claude AI drafting

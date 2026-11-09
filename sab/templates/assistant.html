@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Assistant{% endblock %}
+{% block content %}
+<div class="head"><h1>🤖 Assistant — give a task</h1>
+  <button class="btn ghost sm" onclick="newChat()">+ New conversation</button></div>
+<p class="muted small">Ask in English or Hindi. The assistant searches all your letters, notes, documents and connected Desktop / OneDrive /
+Google Drive files, reads them (including scanned PDFs) and does the work. Everything it creates or changes is listed under the answer.
+Always check facts before you sign or send.</p>
+{% if not ai_available %}
+<div class="flash error">The assistant needs an Anthropic API key. In Terminal run
+  <code>echo sk-ant-YOUR-KEY &gt; ~/Documents/SAB-Data/anthropic_key.txt</code> and restart SAB.</div>
+{% endif %}
+
+<div id="chat"></div>
+
+<form id="askForm" class="card">
+  <textarea id="msg" rows="3" placeholder="e.g. Prepare a note for approval of EOT-2 based on all correspondence on ROW at Ch 12+300 and save it" {{ 'disabled' if not ai_available }}></textarea>
+  <div class="actions" style="margin-top:8px">
+    <button class="btn" id="send" {{ 'disabled' if not ai_available }}>Send ↵</button>
+    <span class="small muted" id="busy"></span>
+  </div>
+  <div class="chips">
+    {% for ex in [
+      "Which letters are pending reply and overdue? List with due dates.",
+      "Summarise all correspondence on utility shifting (POWERGRID) chronologically.",
+      "Prepare a note for approval of the contractor's EOT application, based on all relevant letters, and save it.",
+      "Draft a letter to the contractor asking compliance of the IE's observations within 7 days, and save it as draft.",
+      "Status of all DRB disputes and next dates.",
+      "Make a progress summary of last week from the DPRs.",
+      "Sync my folders now."] %}
+      <button type="button" class="chip" onclick="document.getElementById('msg').value=this.textContent">{{ ex }}</button>
+    {% endfor %}
+  </div>
+</form>
+
+<script>
+let cid = null; try { cid = sessionStorage.getItem('sab_cid'); } catch (e) {}
+const chat = document.getElementById('chat');
+function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function linkify(s) { return esc(s).replace(/(\/m\/(letters|documents|drb|mpr|dpr)\/\d+)/g, '<a href="$1" target="_blank">$1</a>'); }
+function bubble(cls, html) { const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html; chat.appendChild(d); d.scrollIntoView({behavior: 'smooth'}); return d; }
+function newChat() { cid = null; try { sessionStorage.removeItem('sab_cid'); } catch (e) {} chat.innerHTML = ''; }
+const names = {search_records: 'searched', read_record: 'read record', read_original_file: 'opened file', list_letters: 'listed letters',
+  list_disputes: 'listed disputes', project_overview: 'checked overview', dpr_summary: 'DPR summary', save_note: 'saved note',
+  save_letter_draft: 'saved letter', update_letter: 'updated letter', add_dpr_entry: 'added DPR', add_drb_proceeding: 'added proceeding', sync_folders: 'started sync'};
+document.getElementById('askForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('msg').value.trim(); if (!msg) return;
+  bubble('user', esc(msg)); document.getElementById('msg').value = '';
+  const send = document.getElementById('send'); send.disabled = true;
+  const busy = document.getElementById('busy'); let secs = 0;
+  const timer = setInterval(() => busy.textContent = `Working… reading your records (${++secs}s)`, 1000);
+  const fd = new FormData(); fd.append('message', msg); if (cid) fd.append('cid', cid);
+  try {
+    const r = await fetch('{{ url_for("assistant_ask") }}', {method: 'POST', body: fd});
+    const d = await r.json();
+    if (d.cid) { cid = d.cid; try { sessionStorage.setItem('sab_cid', cid); } catch (e) {} }
+    let html = d.error ? `<span class="err">${esc(d.error)}</span>` : `<div class="pre">${linkify(d.text)}</div>`;
+    if (d.actions && d.actions.length) html += '<div class="acts"><strong>Done:</strong><ul>' +
+      d.actions.map(a => `<li><a href="${a.url}" target="_blank">${esc(a.what)}</a></li>`).join('') + '</ul></div>';
+    if (d.steps && d.steps.length) html += `<details class="small muted"><summary>${d.steps.length} step(s)</summary><ul>` +
+      d.steps.map(s => `<li>${names[s.tool] || s.tool}: ${esc(JSON.stringify(s.input))}${s.error ? ' ⚠' : ''}</li>`).join('') + '</ul></details>';
+    if (!d.error) html += `<button class="btn sm ghost" onclick="navigator.clipboard.writeText(this.parentElement.querySelector('.pre').innerText)">Copy</button>`;
+    bubble('bot', html);
+  } catch (err) { bubble('bot', `<span class="err">Error: ${esc(String(err))}</span>`); }
+  clearInterval(timer); busy.textContent = ''; send.disabled = false;
+};
+document.getElementById('msg').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send').click(); } });
+</script>
+{% endblock %}

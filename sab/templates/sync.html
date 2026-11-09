@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Connected Folders{% endblock %}
+{% block content %}
+<h1>🔗 Connected Folders (auto-sync)</h1>
+<p class="muted">Connect your Desktop, OneDrive, Google Drive or any folder once. Every document in them (PDF, Word, Excel, images…)
+is indexed automatically and becomes searchable and usable by the Assistant and “Make Note / Letter”. Files stay where they are —
+nothing is copied. SAB re-checks every {{ settings.sync_minutes or 10 }} minutes for new and changed files (change this in Project Settings).</p>
+
+<section class="card">
+  <div class="head"><h2>Status</h2>
+    <form method="post"><input type="hidden" name="action" value="run"><button class="btn sm" id="runBtn">⟳ Sync now</button></form></div>
+  <p id="syncStatus" class="small">…</p>
+</section>
+
+<section class="card">
+  <h2>Connected</h2>
+  {% if folders %}
+  <table><tr><th>Name</th><th>Path</th><th>Files</th><th>Last checked</th><th></th></tr>
+  {% for f in folders %}<tr><td>{{ f.label }}</td><td class="small"><code>{{ f.path }}</code></td><td>{{ f.file_count if f.file_count is not none else '…' }}</td>
+    <td class="small">{{ f.last_sync or 'not yet' }}</td>
+    <td><form method="post" onsubmit="return confirm('Disconnect this folder? Records already created are kept.')">
+      <input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{ f.id }}"><button class="btn sm danger">Disconnect</button></form></td></tr>
+  {% endfor %}</table>
+  {% else %}<p class="muted">No folders connected yet.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Connect folders</h2>
+  <form method="post" class="actions" style="margin-bottom:12px">
+    <input type="hidden" name="action" value="add_all">
+    <button class="btn">⚡ Connect Desktop + all cloud drives found ({{ suggested|map(attribute=0)|reject('in', ['Documents','Downloads'])|join(', ') }})</button>
+  </form>
+  <p class="small muted">Or connect one folder at a time (better if a drive also holds personal files — connect only the project folders):</p>
+  <div class="actions" style="margin-bottom:8px">
+    <button type="button" class="btn sm ghost" id="fbHome">⌂ Start</button>
+    <button type="button" class="btn sm ghost" id="fbUp">↑ Up</button>
+    <code id="fbPath" class="small"></code>
+  </div>
+  <div class="src-list" id="fbList"></div>
+  <form method="post" class="actions" style="margin-top:8px">
+    <input type="hidden" name="action" value="add"><input type="hidden" name="path" id="fbChosen">
+    <button class="btn" id="fbAdd" disabled>🔗 Connect this folder</button>
+  </form>
+  <p class="small muted" style="margin-top:12px">
+    • The first indexing of a large drive can take a while (Google Drive / OneDrive download each file once to read it). Keep SAB running.<br>
+    • If you see “macOS blocked access”: System Settings → Privacy &amp; Security → <strong>Full Disk Access</strong> → switch on <strong>Terminal</strong>, then restart SAB.<br>
+    • Deleted or moved files are marked missing; their records stay. Scanned PDFs are indexed by name; the Assistant can still read them.</p>
+</section>
+
+<script>
+let wasRunning = null;
+async function refresh() {
+  const s = await (await fetch('{{ url_for("sync_status") }}')).json();
+  if (wasRunning && !s.running) { location.reload(); return; }
+  wasRunning = s.running;
+  if (s.last_end) s.last_end = s.last_end.replace('T', ' ');
+  let t = s.running ? `⟳ Syncing ${s.folder}… ${s.scanned} files checked, ${s.added} new, ${s.updated} updated` :
+    (s.last_end ? `✔ Last sync finished ${s.last_end}: ${s.scanned} files checked, ${s.added} new, ${s.updated} updated, ${s.missing} missing` : 'Not synced yet.');
+  if (s.errors) t += ` · ${s.errors} problem(s), last: ${s.last_error}`;
+  document.getElementById('syncStatus').textContent = t;
+  document.getElementById('runBtn').disabled = s.running;
+  setTimeout(refresh, s.running ? 1500 : 6000);
+}
+refresh();
+let cur = null, parent = null;
+async function openFolder(path) {
+  const r = await fetch('{{ url_for("import_folders") }}' + (path ? '?path=' + encodeURIComponent(path) : ''));
+  if (!r.ok) return;
+  const d = await r.json(); cur = d.path; parent = d.parent;
+  document.getElementById('fbPath').textContent = cur || 'Choose a starting place';
+  document.getElementById('fbChosen').value = cur || '';
+  const list = document.getElementById('fbList'); list.innerHTML = '';
+  d.dirs.forEach(x => { const a = document.createElement('label'); a.style.cursor = 'pointer';
+    a.textContent = '📁 ' + x.name; a.onclick = () => openFolder(x.path); list.appendChild(a); });
+  if (d.error) list.innerHTML = `<label class="muted"></label>`, list.firstChild.textContent = d.error;
+  document.getElementById('fbAdd').disabled = !cur || !!d.error;
+}
+document.getElementById('fbHome').onclick = () => openFolder(null);
+document.getElementById('fbUp').onclick = () => openFolder(parent);
+openFolder(null);
+</script>
+{% endblock %}

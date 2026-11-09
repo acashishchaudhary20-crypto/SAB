@@ -214,3 +214,112 @@ def test_local_folder_import(client, tmp_path, monkeypatch):
     # outside home or from another computer is refused
     assert client.get("/import/folders", query_string={"path": "/etc"}).status_code == 400
     assert client.get("/import/folders", environ_base={"REMOTE_ADDR": "192.168.1.9"}).status_code == 403
+
+
+def test_connected_folder_sync(client, tmp_path, monkeypatch):
+    import os
+    import time
+
+    from sab import sync
+    from sab.app import ALLOWED_EXT
+    home = tmp_path / "home2"
+    gd = home / "Library" / "CloudStorage" / "GoogleDrive-me@x.com" / "My Drive" / "SAB"
+    gd.mkdir(parents=True)
+    (home / "Desktop").mkdir()
+    (gd / "Letter no 702 dated 01.10.2026.txt").write_text("Subject: ROW at Ch 12+300 not handed over")
+    (gd / "GAD culvert.pdf").write_bytes(b"%PDF-1.4 x")
+    (gd / "~$temp.docx").write_bytes(b"x")
+    monkeypatch.setenv("HOME", str(home))
+    labels = [n for n, _ in sync.suggested_folders()]
+    assert "Desktop" in labels and any(l.startswith("Google Drive") for l in labels)
+    client.post("/sync", data={"action": "add_all"})
+    for _ in range(50):
+        if not sync.status["running"] and sync.status["last_end"]:
+            break
+        time.sleep(0.1)
+    app = client.application
+    sync.run_sync(app, ALLOWED_EXT)  # second run: nothing new
+    assert sync.status["added"] == 0
+    with app.app_context():
+        db = store.get_db()
+        letter = db.execute("SELECT * FROM letters").fetchone()
+        assert "ROW at Ch 12+300" in letter["subject"] and letter["attachment"].startswith("watch:")
+        assert db.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 1
+    # the original file is served and searchable
+    assert client.get("/wf/" + letter["attachment"].split(":")[1]).status_code == 200
+    assert b"702" in client.get("/search?q=handed").data
+    # change the file -> text refreshed; delete the other -> marked missing
+    f = gd / "Letter no 702 dated 01.10.2026.txt"
+    f.write_text("Subject: ROW at Ch 12+300 not handed over. UPDATED with tree cutting issue")
+    os.utime(f, (time.time() + 10, time.time() + 10))
+    (gd / "GAD culvert.pdf").unlink()
+    sync.run_sync(app, ALLOWED_EXT)
+    assert sync.status["updated"] == 1 and sync.status["missing"] == 1
+    assert b"702" in client.get("/search?q=tree+cutting").data
+    assert b"Connected" in client.get("/sync").data
+
+
+def test_assistant_tool_loop(client, monkeypatch):
+    import types
+
+    import anthropic
+    _seed_compose(client)
+    calls = []
+
+    def blk(**kw):
+        return types.SimpleNamespace(**kw)
+
+    script = [
+        types.SimpleNamespace(stop_reason="tool_use", content=[
+            blk(type="tool_use", id="t1", name="search_records", input={"query": "EOT 1056"}),
+            blk(type="tool_use", id="t2", name="list_letters", input={"reply_required": "Yes"})]),
+        types.SimpleNamespace(stop_reason="tool_use", content=[
+            blk(type="tool_use", id="t3", name="read_record", input={"register": "letters", "id": 1}),
+            blk(type="tool_use", id="t4", name="save_note", input={"title": "EOT-2 note", "content": "NOTE ..."}),
+            blk(type="tool_use", id="t5", name="update_letter", input={"id": 1, "changes": {"status": "Closed"}}),
+            blk(type="tool_use", id="t6", name="update_letter", input={"id": 1, "changes": {"body": "hack"}})]),
+        types.SimpleNamespace(stop_reason="end_turn", content=[blk(type="text", text="Note saved at /m/documents/1")]),
+    ]
+
+    class FakeStream:
+        def __init__(self, msg):
+            self.msg = msg
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get_final_message(self):
+            return self.msg
+
+    class FakeMessages:
+        def stream(self, **kw):
+            calls.append({**kw, "messages": list(kw["messages"])})  # snapshot: the loop keeps appending
+            return FakeStream(script[len(calls) - 1])
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda *a, **k: types.SimpleNamespace(beta=types.SimpleNamespace(messages=FakeMessages())))
+    d = client.post("/assistant/ask", data={"message": "Prepare EOT-2 note"}).get_json()
+    assert d["text"] == "Note saved at /m/documents/1" and d["cid"]
+    assert [a["url"] for a in d["actions"]] == ["/m/documents/2", "/m/letters/1"]
+    results = {r["tool_use_id"]: r for r in calls[1]["messages"][-1]["content"]}
+    assert "IE/1056" in results["t1"]["content"]
+    res2 = {r["tool_use_id"]: r for r in calls[2]["messages"][-1]["content"]}
+    assert "IE recommends" in res2["t3"]["content"] and res2["t6"]["is_error"] and not res2["t5"]["is_error"]
+    assert calls[0]["model"] == "claude-opus-5-5" and any(t["name"] == "save_note" for t in calls[0]["tools"])
+    with client.application.app_context():
+        assert store.get_record("letters", 1)["status"] == "Closed"
+        assert store.get_record("documents", 2)["doc_type"] == "Note Sheet"
+    # follow-up in the same conversation keeps the history
+    script.append(types.SimpleNamespace(stop_reason="end_turn", content=[blk(type="text", text="ok")]))
+    client.post("/assistant/ask", data={"message": "thanks", "cid": d["cid"]})
+    assert len(calls[-1]["messages"]) == 7
+
+
+def test_assistant_without_key(client, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    r = client.post("/assistant/ask", data={"message": "hi"})
+    assert r.status_code == 400 and "API key" in r.get_json()["error"]
+    assert client.get("/assistant").status_code == 200

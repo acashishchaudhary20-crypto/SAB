@@ -1,5 +1,6 @@
 {%- macro show(name, ftype, value) -%}
   {%- if value is none or value == '' -%}<span class="muted">—</span>
+  {%- elif ftype == 'file' and value.startswith('watch:') -%}<a href="{{ url_for('watched_file', wid=value.split(':')[1]) }}" target="_blank" title="Original file in your connected folder">📎 {{ value.split(':',2)[2] }}</a>
   {%- elif ftype == 'file' -%}<a href="{{ url_for('uploaded', name=value) }}" target="_blank">📎 {{ value.split('_',1)[1] if '_' in value else value }}</a>
   {%- elif ftype == 'date' -%}{{ value|dmy }}
   {%- elif ftype == 'number' -%}{{ value|num }}

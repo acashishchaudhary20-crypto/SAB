@@ -9,9 +9,10 @@ from .modules import MODULES, SETTINGS_FIELDS
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(current_app.config["DATABASE"])
+        g.db = sqlite3.connect(current_app.config["DATABASE"], timeout=30)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
+        g.db.execute("PRAGMA journal_mode = WAL")  # lets the background folder sync and the web pages work together
     return g.db
 
 
