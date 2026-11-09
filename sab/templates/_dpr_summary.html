@@ -1,0 +1,12 @@
+<p>Days reported: <strong>{{ days.days or 0 }}</strong> · Rain-affected days: <strong>{{ days.rain_days or 0 }}</strong> · Avg. manpower: <strong>{{ (days.avg_manpower or 0)|round|int }}</strong></p>
+<table>
+  <tr><th>Activity</th><th>Unit</th><th>Planned</th><th>Achieved</th><th>Achieved %</th></tr>
+  {% for r in rows %}
+  <tr><td>{{ r.activity }}</td><td>{{ r.unit or '' }}</td><td>{{ r.planned|num }}</td><td>{{ r.achieved|num }}</td>
+    <td>{% if r.planned %}{{ ((r.achieved or 0) / r.planned * 100)|round(1) }}%{% else %}—{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">No DPR entries for this month.</td></tr>{% endfor %}
+</table>
+{% if hindrances %}
+<h3>Hindrances recorded</h3>
+<ul>{% for h in hindrances %}<li>{{ h.report_date|dmy }} · Ch. {{ h.chainage_from or '' }}–{{ h.chainage_to or '' }} · {{ h.activity }}: {{ h.hindrances }}</li>{% endfor %}</ul>
+{% endif %}

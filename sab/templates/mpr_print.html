@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>MPR {{ record.month }} · {{ settings.project_name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body class="print">
+<button class="btn noprint" onclick="window.print()">🖨 Print / Save as PDF</button>
+<h1>{{ settings.project_name }}</h1>
+<h2>Monthly Progress Report — {{ record.month }}</h2>
+<table class="kv">
+  <tr><th>Contract No.</th><td>{{ settings.contract_no }}</td><th>Form of Contract</th><td>{{ settings.contract_form }}</td></tr>
+  <tr><th>Authority</th><td>{{ settings.authority }}</td><th>Authority's Engineer</th><td>{{ settings.engineer }}</td></tr>
+  <tr><th>Contractor</th><td>{{ settings.contractor }}</td><th>Length</th><td>{{ settings.project_length_km }} km</td></tr>
+  <tr><th>Appointed Date</th><td>{{ settings.appointed_date|dmy }}</td><th>Scheduled Completion</th><td>{{ settings.scheduled_completion|dmy }}</td></tr>
+  <tr><th>Contract Price</th><td>₹{{ settings.contract_price_cr }} Cr</td><th></th><td></td></tr>
+</table>
+
+<h3>1. Progress summary (cumulative)</h3>
+<table><tr><th></th><th>Planned</th><th>Actual</th><th>Variance</th></tr>
+  <tr><td>Physical (%)</td><td>{{ record.physical_planned|num }}</td><td>{{ record.physical_actual|num }}</td><td>{{ ((record.physical_actual or 0) - (record.physical_planned or 0))|round(2) }}</td></tr>
+  <tr><td>Financial (₹ Cr)</td><td>{{ record.financial_planned|num }}</td><td>{{ record.financial_actual|num }}</td><td>{{ ((record.financial_actual or 0) - (record.financial_planned or 0))|round(2) }}</td></tr>
+</table>
+
+<h3>2. Activity-wise progress during the month (from DPRs)</h3>
+{% include "_dpr_summary.html" %}
+
+<h3>3. Key achievements</h3><div class="pre">{{ record.key_achievements or '—' }}</div>
+<h3>4. Issues / hindrances</h3><div class="pre">{{ record.issues or '—' }}</div>
+<h3>5. IPC / payment status</h3><div class="pre">{{ record.ipc_status or '—' }}</div>
+
+<h3>6. Correspondence during the month</h3>
+<table><tr><th>Ref</th><th>Date</th><th>From → To</th><th>Subject</th><th>Status</th></tr>
+{% for l in letters %}<tr><td>{{ l.ref_no }}</td><td>{{ l.letter_date|dmy }}</td><td>{{ l.from_party }} → {{ l.to_party }}</td><td>{{ l.subject }}</td><td>{{ l.status }}</td></tr>
+{% else %}<tr><td colspan="5">None</td></tr>{% endfor %}</table>
+
+<h3>7. Disputes / DRB status</h3>
+<table><tr><th>No.</th><th>Title</th><th>Amount (₹ Cr)</th><th>Status</th><th>Next date</th></tr>
+{% for d in disputes %}<tr><td>{{ d.dispute_no }}</td><td>{{ d.title }}</td><td>{{ d.amount_claimed|num }}</td><td>{{ d.status }}</td><td>{{ d.next_hearing|dmy }}</td></tr>
+{% else %}<tr><td colspan="5">None</td></tr>{% endfor %}</table>
+
+<h3>8. Plan for next month</h3><div class="pre">{{ record.next_month_plan or '—' }}</div>
+</body></html>

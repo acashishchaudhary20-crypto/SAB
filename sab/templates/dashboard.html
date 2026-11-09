@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Project Dashboard</h1>
+<p class="muted">{{ settings.contract_form }}{% if settings.authority %} · Authority: {{ settings.authority }}{% endif %}{% if settings.contractor %} · Contractor: {{ settings.contractor }}{% endif %}{% if settings.engineer %} · AE: {{ settings.engineer }}{% endif %}</p>
+
+<div class="tiles">
+  {% for key, n in counts.items() %}
+    <a class="tile" href="{{ url_for('list_view', module=key) }}">
+      <span class="tile-n">{{ n }}</span><span>{{ MODULES[key].title }}</span></a>
+  {% endfor %}
+  <div class="tile warn"><span class="tile-n">{{ overdue|length }}</span><span>Overdue replies</span></div>
+  <div class="tile"><span class="tile-n">₹{{ claimed|num }} Cr</span><span>Open DRB claims</span></div>
+</div>
+
+<div class="grid2">
+  <section class="card">
+    <h2>Letters awaiting reply</h2>
+    {% if overdue or due_soon %}
+    <table><tr><th>Ref</th><th>Subject</th><th>Due</th><th></th></tr>
+      {% for l in overdue %}<tr class="overdue"><td><a href="{{ url_for('detail_view', module='letters', rid=l.id) }}">{{ l.ref_no }}</a></td><td>{{ l.subject }}</td><td>{{ l.reply_due|dmy }} ⚠</td><td><a class="btn sm" href="{{ url_for('draft_view', module='letters', rid=l.id) }}">Answer</a></td></tr>{% endfor %}
+      {% for l in due_soon %}<tr><td><a href="{{ url_for('detail_view', module='letters', rid=l.id) }}">{{ l.ref_no }}</a></td><td>{{ l.subject }}</td><td>{{ l.reply_due|dmy }}</td><td><a class="btn sm" href="{{ url_for('draft_view', module='letters', rid=l.id) }}">Answer</a></td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="muted">No letters pending reply.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Active DRB disputes</h2>
+    {% if disputes %}
+    <table><tr><th>No.</th><th>Title</th><th>Status</th><th>Next date</th></tr>
+      {% for d in disputes %}<tr><td><a href="{{ url_for('detail_view', module='drb', rid=d.id) }}">{{ d.dispute_no }}</a></td><td>{{ d.title }}</td><td><span class="pill">{{ d.status }}</span></td><td>{{ d.next_hearing|dmy }}</td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="muted">No active disputes.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Latest DPR {% if last_dpr_date %}— {{ last_dpr_date|dmy }}{% endif %}</h2>
+    {% if last_dpr %}
+    <table><tr><th>Activity</th><th>Chainage</th><th>Achieved</th></tr>
+      {% for r in last_dpr %}<tr><td>{{ r.activity }}</td><td>{{ r.chainage_from or '' }} – {{ r.chainage_to or '' }}</td><td>{{ r.qty_achieved|num }} {{ r.unit or '' }}</td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="muted">No DPR entries yet. <a href="{{ url_for('new_view', module='dpr') }}">Add today's DPR</a>.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Latest MPR {% if last_mpr %}— {{ last_mpr.month }}{% endif %}</h2>
+    {% if last_mpr %}
+      {% set pp = last_mpr.physical_planned or 0 %}{% set pa = last_mpr.physical_actual or 0 %}
+      <div class="bar-label">Physical: {{ pa|num }}% actual vs {{ pp|num }}% planned</div>
+      <div class="bar"><div class="bar-plan" style="width: {{ [pp,100]|min }}%"></div><div class="bar-act" style="width: {{ [pa,100]|min }}%"></div></div>
+      <div class="bar-label">Financial: ₹{{ last_mpr.financial_actual|num }} Cr actual vs ₹{{ last_mpr.financial_planned|num }} Cr planned</div>
+      <p><a href="{{ url_for('mpr_print', rid=last_mpr.id) }}">Open printable MPR →</a></p>
+    {% else %}<p class="muted">No MPR yet. <a href="{{ url_for('mpr_generate') }}">Generate one from DPRs</a>.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Recent correspondence</h2>
+  <table><tr><th>Ref</th><th>Date</th><th>Dir.</th><th>From → To</th><th>Subject</th><th>Status</th></tr>
+  {% for l in recent_letters %}<tr><td><a href="{{ url_for('detail_view', module='letters', rid=l.id) }}">{{ l.ref_no }}</a></td><td>{{ l.letter_date|dmy }}</td><td>{{ l.direction }}</td><td>{{ l.from_party }} → {{ l.to_party }}</td><td>{{ l.subject }}</td><td>{{ l.status }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">No letters registered yet.</td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

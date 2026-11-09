@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ settings.project_name }}{% endblock %} · SAB</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{{ url_for('dashboard') }}">
+    <span class="logo">SB</span>
+    <span><strong>{{ settings.project_name or 'Southern Bypass Project' }}</strong>
+      <small>{{ settings.contract_no }}</small></span>
+  </a>
+  <form class="search" action="{{ url_for('search') }}">
+    <input name="q" placeholder="Search letters, DPR, MPR, disputes, documents…" value="{{ request.args.get('q','') if request.endpoint=='search' else '' }}">
+  </form>
+</header>
+<div class="layout">
+  <nav class="sidebar">
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">◉ Dashboard</a>
+    {% for key, m in MODULES.items() if not m.hidden %}
+      <a href="{{ url_for('list_view', module=key) }}"
+         class="{{ 'active' if request.view_args and request.view_args.get('module')==key }}">{{ m.icon }} {{ m.title }}</a>
+    {% endfor %}
+    <a href="{{ url_for('mpr_generate') }}" class="{{ 'active' if request.endpoint=='mpr_generate' }}">⚙ Generate MPR from DPRs</a>
+    <a href="{{ url_for('settings_view') }}" class="{{ 'active' if request.endpoint=='settings_view' }}">⚙ Project Settings</a>
+    <div class="ai-badge {{ 'on' if ai_available else 'off' }}">
+      AI drafting: {{ 'ON' if ai_available else 'OFF (set ANTHROPIC_API_KEY)' }}
+    </div>
+  </nav>
+  <main>
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

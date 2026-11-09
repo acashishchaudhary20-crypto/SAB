@@ -1,0 +1,10 @@
+{%- macro show(name, ftype, value) -%}
+  {%- if value is none or value == '' -%}<span class="muted">—</span>
+  {%- elif ftype == 'file' -%}<a href="{{ url_for('uploaded', name=value) }}" target="_blank">📎 {{ value.split('_',1)[1] if '_' in value else value }}</a>
+  {%- elif ftype == 'date' -%}{{ value|dmy }}
+  {%- elif ftype == 'number' -%}{{ value|num }}
+  {%- elif name == 'status' -%}<span class="pill s-{{ value|lower|replace(' ','-')|replace('/','') }}">{{ value }}</span>
+  {%- elif ftype == 'textarea' -%}<div class="pre">{{ value }}</div>
+  {%- else -%}{{ value }}
+  {%- endif -%}
+{%- endmacro -%}

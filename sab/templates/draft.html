@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Draft{% endblock %}
+{% block content %}
+<h1>✍ {{ 'Answer letter' if module=='letters' else 'DRB submission' }}:
+  {{ record.ref_no if module=='letters' else record.dispute_no }}</h1>
+<p class="muted">{{ record.subject if module=='letters' else record.title }}</p>
+
+<div class="grid2">
+<section class="card">
+  <h2>1. Choose what to draft</h2>
+  <form method="post">
+    <label><span>Document type</span>
+      <select name="kind">{% for k in kinds %}<option {{ 'selected' if k==kind }}>{{ k }}</option>{% endfor %}</select></label>
+    <label><span>Key points / instructions (optional)</span>
+      <textarea name="instructions" rows="5" placeholder="e.g. Reject the deduction of ₹2.3 Cr; ROW at Ch. 12+300 to 13+100 still not handed over; cite our letters of 05.03 and 18.04">{{ instructions }}</textarea></label>
+    <div class="actions">
+      <button class="btn" name="action" value="template">Generate template draft</button>
+      <button class="btn" name="action" value="ai" {{ 'disabled title=Set ANTHROPIC_API_KEY' if not ai_available }}>✨ Draft with AI (Claude)</button>
+    </div>
+    {% if not ai_available %}<p class="muted small">AI drafting is off. Set the <code>ANTHROPIC_API_KEY</code> environment variable and restart to enable it.</p>{% endif %}
+  </form>
+</section>
+<section class="card">
+  <h2>Context used</h2>
+  <p class="small">The draft uses this record, the project settings{% if linked %}, {{ linked|length }} linked letter(s){% endif %}{% if entries %} and {{ entries|length }} proceeding(s){% endif %}.</p>
+  {% if linked %}<ul class="small">{% for l in linked %}<li>{{ l.ref_no }} ({{ l.letter_date|dmy }}) – {{ l.subject }}</li>{% endfor %}</ul>{% endif %}
+  <p class="small muted">Link more letters by adding their reference numbers to
+    “{{ 'References' if module=='letters' else 'Related Letter Refs' }}” on the record.</p>
+</section>
+</div>
+
+{% if draft %}
+<section class="card">
+  <h2>2. Review &amp; edit the draft <small class="muted">({{ 'AI' if source=='ai' else 'template' }})</small></h2>
+  <form method="post">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <input type="hidden" name="source" value="{{ source }}">
+    <textarea name="content" rows="30" class="mono">{{ draft }}</textarea>
+    <p class="small muted">Check every fact, date, amount and clause before issue. Drafts are a starting point, not legal advice.</p>
+    <div class="actions">
+      <button class="btn" name="action" value="save">Save draft to record</button>
+      <button type="button" class="btn ghost" onclick="navigator.clipboard.writeText(this.form.content.value)">Copy</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

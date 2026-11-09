@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Generate MPR{% endblock %}
+{% block content %}
+<h1>⚙ Generate MPR from Daily Progress Reports</h1>
+<form class="filters">
+  <input type="month" name="month" value="{{ month }}">
+  <button class="btn ghost">Show</button>
+</form>
+<section class="card">
+  <h2>{{ month }} — DPR roll-up</h2>
+  {% include "_dpr_summary.html" %}
+</section>
+{% if prev %}<p class="muted">Previous MPR ({{ prev.month }}): physical {{ prev.physical_actual|num }}% · financial ₹{{ prev.financial_actual|num }} Cr (cumulative).</p>{% endif %}
+<form method="get" action="{{ url_for('new_view', module='mpr') }}">
+  <input type="hidden" name="month" value="{{ month }}">
+  <input type="hidden" name="key_achievements" value="{{ achievements }}">
+  <input type="hidden" name="issues" value="{{ issues }}">
+  <button class="btn">Create MPR for {{ month }} with this data →</button>
+</form>
+{% endblock %}

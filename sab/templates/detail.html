@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_value.html" import show %}
+{% block title %}{{ mod.singular }}{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>{{ mod.icon }} {{ mod.singular }}: {{ record[mod.list[0]] }}</h1>
+  <div>
+    {% if mod.can_reply %}<a class="btn" href="{{ url_for('draft_view', module=module, rid=record.id) }}">✍ {{ 'Answer this letter' if module=='letters' else 'Draft DRB submission' }}</a>{% endif %}
+    {% if module == 'mpr' %}<a class="btn" href="{{ url_for('mpr_print', rid=record.id) }}">🖨 Printable MPR</a>{% endif %}
+    <a class="btn ghost" href="{{ url_for('edit_view', module=module, rid=record.id) }}">Edit</a>
+    <form method="post" action="{{ url_for('delete_view', module=module, rid=record.id) }}" class="inline" onsubmit="return confirm('Delete this record permanently?')"><button class="btn danger">Delete</button></form>
+  </div>
+</div>
+
+<section class="card">
+  <dl class="fields">
+    {% for name, label, ftype, opts in mod.fields if ftype != 'hidden' %}
+      <div class="{{ 'wide' if ftype=='textarea' }}"><dt>{{ label }}</dt><dd>{{ show(name, ftype, record[name]) }}</dd></div>
+    {% endfor %}
+  </dl>
+  <p class="muted small">Created {{ record.created_at }} · Updated {{ record.updated_at }}</p>
+</section>
+
+{% if linked %}
+<section class="card">
+  <h2>Linked correspondence</h2>
+  <table><tr><th>Ref</th><th>Date</th><th>From → To</th><th>Subject</th></tr>
+  {% for l in linked %}<tr><td><a href="{{ url_for('detail_view', module='letters', rid=l.id) }}">{{ l.ref_no }}</a></td><td>{{ l.letter_date|dmy }}</td><td>{{ l.from_party }} → {{ l.to_party }}</td><td>{{ l.subject }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{% if answers %}
+<section class="card">
+  <h2>Letters referring to this one (replies / follow-ups)</h2>
+  <table><tr><th>Ref</th><th>Date</th><th>Direction</th><th>Subject</th></tr>
+  {% for l in answers %}<tr><td><a href="{{ url_for('detail_view', module='letters', rid=l.id) }}">{{ l.ref_no }}</a></td><td>{{ l.letter_date|dmy }}</td><td>{{ l.direction }}</td><td>{{ l.subject }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{% if module == 'drb' %}
+<section class="card">
+  <div class="head"><h2>⏱ Proceedings / Timeline</h2>
+    <a class="btn sm" href="{{ url_for('new_view', module='drb_entries', dispute_id=record.id) }}">+ Add proceeding</a></div>
+  <table><tr><th>Date</th><th>Type</th><th>By</th><th>Summary</th><th>Doc</th><th></th></tr>
+  {% for e in entries %}<tr><td>{{ e.entry_date|dmy }}</td><td>{{ e.entry_type }}</td><td>{{ e.party or '' }}</td><td class="pre">{{ e.summary or '' }}</td><td>{{ show('attachment','file',e.attachment) }}</td>
+    <td class="nowrap"><a class="btn sm ghost" href="{{ url_for('edit_view', module='drb_entries', rid=e.id) }}">Edit</a>
+      <form method="post" action="{{ url_for('delete_view', module='drb_entries', rid=e.id) }}" class="inline" onsubmit="return confirm('Delete?')"><button class="btn sm danger">×</button></form></td></tr>
+  {% else %}<tr><td colspan="6" class="muted">No proceedings recorded.</td></tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{% if module == 'mpr' %}
+{% set rows, days, hindrances = summary %}
+<section class="card">
+  <h2>DPR summary for {{ record.month }}</h2>
+  {% include "_dpr_summary.html" %}
+</section>
+{% endif %}
+
+{% if mod.can_reply %}
+<section class="card">
+  <h2>Saved drafts / replies</h2>
+  {% for r in replies %}
+    <details class="reply" {{ 'open' if loop.first }}>
+      <summary><strong>{{ r.kind }}</strong> · {{ r.source }} · {{ r.created_at }}</summary>
+      <pre class="draft">{{ r.content }}</pre>
+      <div class="actions">
+        <button class="btn sm ghost" onclick="navigator.clipboard.writeText(this.closest('details').querySelector('pre').innerText)">Copy</button>
+        {% if module == 'letters' %}
+        <form method="post" action="{{ url_for('issue_reply', reply_id=r.id) }}" class="inline">
+          <input name="ref_no" placeholder="Outgoing letter ref no." required>
+          <input type="date" name="letter_date" value="{{ today }}">
+          <button class="btn sm">Register as issued letter</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('delete_reply', reply_id=r.id) }}" class="inline" onsubmit="return confirm('Delete draft?')"><button class="btn sm danger">Delete</button></form>
+      </div>
+    </details>
+  {% else %}<p class="muted">No drafts yet. Use “{{ 'Answer this letter' if module=='letters' else 'Draft DRB submission' }}”.</p>{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

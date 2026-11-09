@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Project Settings{% endblock %}
+{% block content %}
+<h1>⚙ Project Settings</h1>
+<p class="muted">Used in letter headers, DRB submissions, MPR covers and AI drafting.</p>
+<form method="post" class="card form">
+  {% for key, label, default in fields %}
+  <label><span>{{ label }}</span>
+    {% if key == 'our_role' %}
+      <select name="{{ key }}">{% for r in roles %}<option {{ 'selected' if settings[key]==r }}>{{ r }}</option>{% endfor %}</select>
+    {% elif key in ('appointed_date','scheduled_completion') %}
+      <input type="date" name="{{ key }}" value="{{ settings[key] or '' }}">
+    {% else %}
+      <input name="{{ key }}" value="{{ settings[key] or '' }}">
+    {% endif %}
+  </label>
+  {% endfor %}
+  <div class="actions wide"><button class="btn">Save settings</button></div>
+</form>
+{% endblock %}

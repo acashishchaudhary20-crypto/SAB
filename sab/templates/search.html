@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Search{% endblock %}
+{% block content %}
+<h1>Search: “{{ q }}”</h1>
+{% if not results %}<p class="muted">{{ 'No matches.' if q else 'Type in the search box above.' }}</p>{% endif %}
+{% for m, rows in results.items() %}
+<section class="card">
+  {% if m == 'replies' %}
+    <h2>Saved drafts ({{ rows|length }})</h2>
+    <ul>{% for r in rows %}<li><a href="{{ url_for('detail_view', module=r.module, rid=r.record_id) }}">{{ r.kind }} · {{ r.created_at }}</a></li>{% endfor %}</ul>
+  {% else %}
+    {% set mod = MODULES[m] %}
+    <h2>{{ mod.icon }} {{ mod.title }} ({{ rows|length }})</h2>
+    <ul>{% for r in rows %}
+      <li><a href="{{ url_for('detail_view', module=(mod.parent or m), rid=(r.dispute_id if mod.parent else r.id)) }}">
+        {% for c in mod.list[:3] %}{{ r[c] or '' }}{{ ' · ' if not loop.last }}{% endfor %}</a></li>
+    {% endfor %}</ul>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

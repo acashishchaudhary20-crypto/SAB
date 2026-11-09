@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ 'New' if is_new else 'Edit' }} {{ mod.singular }}{% endblock %}
+{% block content %}
+<h1>{{ 'New' if is_new else 'Edit' }} {{ mod.singular }}</h1>
+<form method="post" enctype="multipart/form-data" class="card form">
+  {% for name, label, ftype, opts in mod.fields %}
+    {% set val = record[name] if record and name in record.keys() and record[name] is not none else '' %}
+    {% if ftype == 'hidden' %}
+      <input type="hidden" name="{{ name }}" value="{{ val }}">
+    {% else %}
+    <label class="{{ 'wide' if ftype=='textarea' }}">
+      <span>{{ label }}{% if name in mod.required %} *{% endif %}</span>
+      {% if ftype == 'textarea' %}
+        <textarea name="{{ name }}" rows="5">{{ val }}</textarea>
+      {% elif ftype == 'select' %}
+        <select name="{{ name }}"><option value=""></option>
+          {% for o in opts %}<option {{ 'selected' if o == val }}>{{ o }}</option>{% endfor %}</select>
+      {% elif ftype == 'file' %}
+        <input type="file" name="{{ name }}">
+        {% if val %}<small>Current: <a href="{{ url_for('uploaded', name=val) }}" target="_blank">{{ val }}</a> (upload to replace)</small>{% endif %}
+      {% elif ftype == 'number' %}
+        <input type="number" step="any" name="{{ name }}" value="{{ val }}">
+      {% else %}
+        <input type="{{ ftype if ftype in ('date','month') else 'text' }}" name="{{ name }}" value="{{ val }}" {{ 'required' if name in mod.required }}>
+      {% endif %}
+    </label>
+    {% endif %}
+  {% endfor %}
+  <div class="actions wide">
+    <button class="btn">Save</button>
+    <a class="btn ghost" href="javascript:history.back()">Cancel</a>
+  </div>
+</form>
+{% endblock %}
