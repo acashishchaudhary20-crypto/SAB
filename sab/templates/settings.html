@@ -2,6 +2,19 @@
 {% block title %}Project Settings{% endblock %}
 {% block content %}
 <h1>⚙ Project Settings</h1>
+<section class="card">
+  <h2>🔑 AI key (for the Assistant and AI drafting)</h2>
+  <p class="small muted">Create it at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com → API Keys</a>
+    and add credit under Billing. A Claude Pro / claude.ai subscription does not include an API key.
+    The key is stored only on this Mac (SAB-Data/anthropic_key.txt).</p>
+  <p>Current key: <strong>{{ masked_key or 'none' }}</strong></p>
+  <form method="post" action="{{ url_for('ai_key_view') }}" class="actions">
+    <input name="key" type="password" placeholder="Paste key: sk-ant-…" style="flex:1;min-width:260px" autocomplete="off">
+    <button class="btn" name="action" value="save">Save &amp; test</button>
+    {% if masked_key %}<button class="btn ghost" name="action" value="test">Test current key</button>
+    <button class="btn danger" name="action" value="remove" onclick="return confirm('Remove the key?')">Remove</button>{% endif %}
+  </form>
+</section>
 <p class="muted">Used in letter headers, DRB submissions, MPR covers and AI drafting.</p>
 <form method="post" class="card form">
   {% for key, label, default in fields %}

@@ -457,7 +457,8 @@ def ask(cid, user_text):
             response = _call(client, max_tokens=16000, system=system, tools=TOOLS, messages=messages)
             messages.append({"role": "assistant", "content": response.content})
     except anthropic.AuthenticationError:
-        return {"error": "Anthropic API key was rejected - check the key.", "actions": actions, "steps": steps}
+        return {"error": "Anthropic rejected the API key. Open Project Settings → AI key, paste a valid key from "
+                         "console.anthropic.com and press 'Save & test'.", "actions": actions, "steps": steps}
     except anthropic.RateLimitError:
         return {"error": "Rate limited by the Anthropic API - try again in a minute.", "actions": actions, "steps": steps}
     except anthropic.APIStatusError as e:

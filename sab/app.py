@@ -37,9 +37,10 @@ def create_app(test_config=None):
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     # optional: API key for AI drafting kept in a file next to the data (never inside the code folder)
     key_file = os.path.join(os.path.dirname(app.config["DATABASE"]), "anthropic_key.txt")
+    app.config["KEY_FILE"] = key_file
     if not os.environ.get("ANTHROPIC_API_KEY") and os.path.isfile(key_file):
         with open(key_file, encoding="utf8") as fh:
-            key = fh.read().strip()
+            key = clean_key(fh.read())
         if key:
             os.environ["ANTHROPIC_API_KEY"] = key
 
@@ -82,6 +83,40 @@ def create_app(test_config=None):
     if not app.config.get("TESTING") and os.environ.get("SAB_NO_SYNC") != "1":
         sync.start_background(app, ALLOWED_EXT, minutes)
     return app
+
+
+def clean_key(text):
+    """Pull the API key out of whatever was pasted (quotes, <>, spaces, 'export ...=' etc.)."""
+    import re
+    m = re.search(r"sk-ant-[A-Za-z0-9_\-]{20,}", text or "")
+    return m.group(0) if m else (text or "").strip().strip("'\"<> ")
+
+
+def test_key(key):
+    """Make the smallest real request to check the key and the account's credit. Returns (ok, message)."""
+    try:
+        import anthropic
+    except ImportError:
+        return False, "The 'anthropic' package is not installed (run: pip3 install -r requirements.txt)."
+    try:
+        client = anthropic.Anthropic(api_key=key, max_retries=0, timeout=60)
+        client.messages.create(model=os.environ.get("SAB_CLAUDE_MODEL", "claude-opus-5-5"), max_tokens=64,
+                               output_config={"effort": "low"}, messages=[{"role": "user", "content": "Reply OK"}])
+        return True, "Key works ✔ - the Assistant and AI drafting are ready."
+    except anthropic.AuthenticationError:
+        return False, ("Anthropic rejected this key. Create a new key at console.anthropic.com → API Keys and paste "
+                       "the whole key (it starts with sk-ant-). A Claude Pro / claude.ai subscription is not an API key.")
+    except anthropic.PermissionDeniedError as e:
+        return False, f"The key has no permission for this model: {e.message}"
+    except anthropic.BadRequestError as e:
+        msg = str(e.message)
+        if "credit" in msg.lower() or "billing" in msg.lower():
+            return False, "The key is valid but the account has no credit. Add credit at console.anthropic.com → Billing."
+        return False, f"Request refused: {msg}"
+    except anthropic.APIConnectionError:
+        return False, "Could not reach Anthropic - check the internet connection (or VPN / office firewall)."
+    except anthropic.APIStatusError as e:
+        return False, f"Anthropic error {e.status_code}: {e.message}"
 
 
 def default_data_dir():
@@ -425,7 +460,36 @@ def _register_routes(app):
             store.save_settings({k: request.form.get(k, "").strip() for k, _l, _d in SETTINGS_FIELDS})
             flash("Project settings saved.", "ok")
             return redirect(url_for("settings_view"))
-        return render_template("settings.html", fields=SETTINGS_FIELDS, roles=ROLES)
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        masked = f"{key[:10]}…{key[-4:]}" if len(key) > 16 else ("(set)" if key else "")
+        return render_template("settings.html", fields=SETTINGS_FIELDS, roles=ROLES, masked_key=masked)
+
+    @app.route("/settings/ai-key", methods=["POST"])
+    def ai_key_view():
+        _local_only()
+        action = request.form.get("action")
+        if action == "remove":
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+            if os.path.isfile(app.config["KEY_FILE"]):
+                os.remove(app.config["KEY_FILE"])
+            flash("API key removed. AI features are off.", "ok")
+            return redirect(url_for("settings_view"))
+        key = clean_key(request.form.get("key", "")) if action == "save" else os.environ.get("ANTHROPIC_API_KEY", "")
+        if not key:
+            flash("Paste the API key first.", "error")
+            return redirect(url_for("settings_view"))
+        ok, msg = test_key(key)
+        if action == "save":
+            with open(app.config["KEY_FILE"], "w", encoding="utf8") as fh:
+                fh.write(key)
+            try:
+                os.chmod(app.config["KEY_FILE"], 0o600)
+            except OSError:
+                pass
+            os.environ["ANTHROPIC_API_KEY"] = key
+            msg = "Key saved. " + msg
+        flash(msg, "ok" if ok else "error")
+        return redirect(url_for("settings_view"))
 
     def _local_only():
         if request.remote_addr not in ("127.0.0.1", "::1"):

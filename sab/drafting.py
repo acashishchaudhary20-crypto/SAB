@@ -259,7 +259,7 @@ def ai_draft(prompt, system=SYSTEM_PROMPT):
             messages=[{"role": "user", "content": prompt}],
         )
     except anthropic.AuthenticationError:
-        return None, "Anthropic API key was rejected - check ANTHROPIC_API_KEY."
+        return None, "Anthropic rejected the API key - fix it in Project Settings → AI key."
     except anthropic.RateLimitError:
         return None, "Rate limited by the Anthropic API - try again in a minute."
     except anthropic.APIStatusError as e:

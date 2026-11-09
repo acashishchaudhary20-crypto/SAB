@@ -7,8 +7,7 @@
 Google Drive files, reads them (including scanned PDFs) and does the work. Everything it creates or changes is listed under the answer.
 Always check facts before you sign or send.</p>
 {% if not ai_available %}
-<div class="flash error">The assistant needs an Anthropic API key. In Terminal run
-  <code>echo sk-ant-YOUR-KEY &gt; ~/Documents/SAB-Data/anthropic_key.txt</code> and restart SAB.</div>
+<div class="flash error">The assistant needs an Anthropic API key. Add it in <a href="{{ url_for('settings_view') }}">Project Settings → AI key</a>.</div>
 {% endif %}
 
 <div id="chat"></div>

@@ -323,3 +323,20 @@ def test_assistant_without_key(client, monkeypatch):
     r = client.post("/assistant/ask", data={"message": "hi"})
     assert r.status_code == 400 and "API key" in r.get_json()["error"]
     assert client.get("/assistant").status_code == 200
+
+
+def test_ai_key_settings(client, monkeypatch, tmp_path):
+    import os
+
+    from sab import app as appmod
+    assert appmod.clean_key('export ANTHROPIC_API_KEY="<sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV_xyz>"') == \
+        "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV_xyz"
+    monkeypatch.setattr(appmod, "test_key", lambda k: (False, "Anthropic rejected this key."))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client.application.config["KEY_FILE"] = str(tmp_path / "anthropic_key.txt")
+    r = client.post("/settings/ai-key", data={"action": "save", "key": " 'sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV' "},
+                    follow_redirects=True)
+    assert b"rejected" in r.data and b"sk-ant-api" in r.data
+    assert (tmp_path / "anthropic_key.txt").read_text() == "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV"
+    client.post("/settings/ai-key", data={"action": "remove"})
+    assert not (tmp_path / "anthropic_key.txt").exists() and "ANTHROPIC_API_KEY" not in os.environ
