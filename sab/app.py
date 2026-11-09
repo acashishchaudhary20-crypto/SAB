@@ -10,21 +10,23 @@ from werkzeug.utils import secure_filename
 
 from . import db as store
 from . import drafting
+from . import importer
 from .modules import MODULES, ROLES, SETTINGS_FIELDS, field_map
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWED_EXT = {"pdf", "doc", "docx", "xls", "xlsx", "csv", "jpg", "jpeg", "png",
-               "dwg", "dxf", "zip", "txt", "ppt", "pptx", "msg", "eml"}
+               "dwg", "dxf", "zip", "txt", "ppt", "pptx", "msg", "eml", "heic", "rtf",
+               "xlsm", "tif", "tiff", "kml", "kmz", "mpp", "odt", "ods"}
 
 
 def create_app(test_config=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    data_dir = os.environ.get("SAB_DATA_DIR", os.path.join(BASE_DIR, "data"))
+    data_dir = os.environ.get("SAB_DATA_DIR") or default_data_dir()
     app.config.update(
         SECRET_KEY=os.environ.get("SAB_SECRET_KEY", "change-me-in-production"),
         DATABASE=os.path.join(data_dir, "sab.sqlite3"),
         UPLOAD_FOLDER=os.path.join(data_dir, "uploads"),
-        MAX_CONTENT_LENGTH=100 * 1024 * 1024,
+        MAX_CONTENT_LENGTH=4 * 1024 * 1024 * 1024,  # bulk import of whole folders
     )
     if test_config:
         app.config.update(test_config)
@@ -62,6 +64,18 @@ def create_app(test_config=None):
 
     _register_routes(app)
     return app
+
+
+def default_data_dir():
+    """Keep data outside the code folder so a new version of the app never loses it.
+
+    An existing 'data' folder next to the code (older versions) is still used.
+    """
+    legacy = os.path.join(BASE_DIR, "data")
+    if os.path.isdir(legacy):
+        return legacy
+    docs = os.path.join(os.path.expanduser("~"), "Documents")
+    return os.path.join(docs if os.path.isdir(docs) else os.path.expanduser("~"), "SAB-Data")
 
 
 def _module_or_404(module):
@@ -394,6 +408,34 @@ def _register_routes(app):
             flash("Project settings saved.", "ok")
             return redirect(url_for("settings_view"))
         return render_template("settings.html", fields=SETTINGS_FIELDS, roles=ROLES)
+
+    @app.route("/import", methods=["GET", "POST"])
+    def import_view():
+        if request.method == "GET":
+            return render_template("import.html", results=None, data_dir=os.path.dirname(app.config["DATABASE"]))
+        force = request.form.get("register") or None
+        if force not in (None, "letters", "documents"):
+            force = None
+        results = []
+        tmp = os.path.join(app.config["UPLOAD_FOLDER"], ".incoming")
+        os.makedirs(tmp, exist_ok=True)
+        for f in request.files.getlist("files"):
+            if not f or not f.filename:
+                continue
+            path = os.path.join(tmp, "upload.tmp")
+            f.save(path)
+            try:
+                results.append(importer.import_file(path, f.filename, app.config["UPLOAD_FOLDER"], ALLOWED_EXT, force))
+            except Exception as e:  # never let one bad file stop the whole import
+                results.append({"name": f.filename, "status": "error", "module": None, "id": None, "note": str(e)})
+            finally:
+                if os.path.exists(path):
+                    os.remove(path)
+        if request.form.get("ajax"):
+            return {"results": results}
+        n = sum(r["status"] == "imported" for r in results)
+        flash(f"Imported {n} file(s); {len(results) - n} skipped.", "ok")
+        return render_template("import.html", results=results, data_dir=os.path.dirname(app.config["DATABASE"]))
 
     @app.route("/uploads/<path:name>")
     def uploaded(name):

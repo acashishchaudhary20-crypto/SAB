@@ -1,4 +1,5 @@
 flask>=3.0
 anthropic>=0.70   # optional: AI drafting of replies / DRB submissions
 waitress>=3.0     # optional: production server on Windows/Linux
+pypdf>=4.0         # reads text inside PDFs during bulk import (search + auto-filing)
 pytest>=8.0       # tests

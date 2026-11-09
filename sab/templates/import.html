@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Bulk Import{% endblock %}
+{% block content %}
+<h1>⇪ Bulk Import Existing Files</h1>
+<p class="muted">Bring all your existing project files in one go — from Desktop, Downloads, Google Drive, OneDrive or a pen drive.
+Each file is copied into the system and filed as a <strong>Letter</strong> or a <strong>Document</strong>. Date, letter number, sender,
+category and document type are read from the file name and the text inside PDFs / Word files, and that text becomes searchable.
+Files imported before are skipped automatically, so you can run this again any time.</p>
+
+<section class="card">
+  <h2>1. Choose files</h2>
+  <div class="actions">
+    <label class="btn">📁 Choose a whole folder<input type="file" id="pickFolder" webkitdirectory multiple hidden></label>
+    <label class="btn ghost">📄 Choose individual files<input type="file" id="pickFiles" multiple hidden></label>
+  </div>
+  <p class="small muted">Tip: in the folder window, Google Drive and OneDrive appear in the left sidebar under <em>Locations</em>.
+    Choosing a folder includes all its sub-folders.</p>
+  <p id="picked" class="small"></p>
+
+  <h2>2. File them as</h2>
+  <label><select id="register">
+    <option value="">Automatic (names with Letter / Ltr / Notice / Reply… → Letters; everything else → Documents)</option>
+    <option value="letters">All as Letters</option>
+    <option value="documents">All as Documents</option>
+  </select></label>
+  <div class="actions"><button class="btn" id="start" disabled>Start import</button></div>
+  <div class="bar" id="bar" hidden><div class="bar-act" id="barFill" style="width:0;height:14px;top:0"></div></div>
+  <p id="progress" class="small"></p>
+</section>
+
+<section class="card" id="resultsCard" {{ 'hidden' if not results }}>
+  <h2>Result</h2>
+  <p class="small muted">Open any imported record to correct the details (e.g. mark a letter <em>Reply Required</em>, set Outgoing, fix the subject).</p>
+  <div class="table-wrap"><table id="results">
+    <tr><th>File</th><th>Result</th><th>Filed in</th><th>Note</th></tr>
+    {% for r in results or [] %}
+    <tr><td>{{ r.name }}</td><td>{{ r.status }}</td>
+      <td>{% if r.id %}<a href="{{ url_for('detail_view', module=r.module, rid=r.id) }}">{{ MODULES[r.module].title }} #{{ r.id }}</a>{% endif %}</td><td>{{ r.note }}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+<p class="small muted">Your data is stored in: <code>{{ data_dir }}</code> — back this folder up regularly.</p>
+
+<script>
+const titles = {{ ({'letters': MODULES.letters.title, 'documents': MODULES.documents.title})|tojson }};
+let files = [];
+function picked(list) {
+  files = Array.from(list).filter(f => !f.name.startsWith('.'));
+  document.getElementById('picked').textContent = files.length + ' file(s) selected, ' +
+    (files.reduce((a, f) => a + f.size, 0) / 1048576).toFixed(1) + ' MB';
+  document.getElementById('start').disabled = files.length === 0;
+}
+document.getElementById('pickFolder').onchange = e => picked(e.target.files);
+document.getElementById('pickFiles').onchange = e => picked(e.target.files);
+function addRow(r) {
+  const tr = document.createElement('tr');
+  const link = r.id ? `<a href="/m/${r.module}/${r.id}">${titles[r.module]} #${r.id}</a>` : '';
+  tr.innerHTML = `<td></td><td>${r.status}</td><td>${link}</td><td></td>`;
+  tr.children[0].textContent = r.name; tr.children[3].textContent = r.note || '';
+  document.getElementById('results').appendChild(tr);
+}
+document.getElementById('start').onclick = async () => {
+  const btn = document.getElementById('start'); btn.disabled = true;
+  document.getElementById('resultsCard').hidden = false; document.getElementById('bar').hidden = false;
+  let done = 0, ok = 0;
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append('files', f, f.webkitRelativePath || f.name);
+    fd.append('register', document.getElementById('register').value);
+    fd.append('ajax', '1');
+    try {
+      const res = await fetch('{{ url_for("import_view") }}', {method: 'POST', body: fd});
+      const data = await res.json();
+      data.results.forEach(r => { addRow(r); if (r.status === 'imported') ok++; });
+    } catch (e) { addRow({name: f.name, status: 'error', note: String(e)}); }
+    done++;
+    document.getElementById('barFill').style.width = (done / files.length * 100) + '%';
+    document.getElementById('progress').textContent = `${done} / ${files.length} processed · ${ok} imported`;
+  }
+  document.getElementById('progress').textContent += ' · Finished ✔';
+};
+</script>
+{% endblock %}

@@ -106,3 +106,41 @@ def test_ai_draft_uses_claude(client, monkeypatch):
     assert b"AI DRAFT BODY" in r.data
     assert captured["model"] == "claude-opus-5-5"
     assert "Unique subject" in captured["messages"][0]["content"] and "be firm" in captured["messages"][0]["content"]
+
+
+def test_classify_rules():
+    from sab.importer import classify, find_date
+    m, d = classify("IE Letter No. 1056 (Sub EOT) dated 14.09.2026.pdf", "")
+    assert m == "letters" and d["letter_date"] == "2026-09-14" and d["from_party"] == "Authority's Engineer"
+    assert d["category"] == "EOT (Extension of Time)" and d["ref_no"].startswith("1056")
+    m, d = classify("GAD of ROB at Ch 10+200.pdf", "")
+    assert m == "documents" and d["doc_type"] == "Drawing"
+    m, d = classify("Minutes of meeting 2026-10-05.docx", "")
+    assert m == "documents" and d["doc_type"] == "Minutes of Meeting" and d["doc_date"] == "2026-10-05"
+    assert classify("anything.pdf", "", force="letters")[0] == "letters"
+    assert find_date("dated 5th October, 2026") == "2026-10-05"
+
+
+def test_bulk_import(client):
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("word/document.xml", "<w:p>Subject: Shifting of POWERGRID line at Ch 12+300</w:p>")
+    files = [(io.BytesIO(buf.getvalue()), "SAB/Letters/Letter to AE 01.11.2026.docx"),
+             (io.BytesIO(b"x"), "SAB/Drawings/GAD culvert.pdf"),
+             (io.BytesIO(b"x"), "SAB/.DS_Store"),
+             (io.BytesIO(b"x"), "SAB/tool.exe")]
+    r = client.post("/import", data={"files": files, "ajax": "1"}, content_type="multipart/form-data")
+    res = r.get_json()["results"]
+    assert [x["status"] for x in res] == ["imported", "imported", "skipped", "skipped"]
+    assert res[0]["module"] == "letters" and res[1]["module"] == "documents"
+    with client.application.app_context():
+        letter = store.get_record("letters", res[0]["id"])
+        assert "POWERGRID" in letter["subject"] and letter["category"] == "Utility Shifting"
+        assert letter["letter_date"] == "2026-11-01" and letter["attachment"]
+    assert b"Letter to AE" in client.get("/search?q=POWERGRID").data
+    # importing the same content again is skipped
+    r = client.post("/import", data={"files": [(io.BytesIO(b"x"), "again.pdf")], "ajax": "1"},
+                    content_type="multipart/form-data")
+    assert r.get_json()["results"][0]["note"] == "already imported"
+    assert client.get("/import").status_code == 200

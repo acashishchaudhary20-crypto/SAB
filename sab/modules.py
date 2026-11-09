@@ -48,7 +48,7 @@ DOC_TYPES = [
     "Contract Agreement", "GCC / PCC / Schedules", "Drawing", "Design Report",
     "Method Statement", "Minutes of Meeting", "Approval", "IPC / Invoice",
     "EOT", "Variation / COS", "Bank Guarantee", "Insurance", "Test Report",
-    "Photograph", "Other",
+    "Photograph", "Note Sheet", "Other",
 ]
 
 MODULES = {

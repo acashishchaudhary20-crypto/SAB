@@ -26,6 +26,22 @@ On any letter or dispute click **Answer** / **Draft DRB submission**:
 
 Drafts are a starting point: check every fact, date, amount and clause before issue.
 
+## Bring in all your existing files in one go
+
+Sidebar → **⇪ Bulk Import Files** → **Choose a whole folder** (Desktop, Downloads, Google Drive, OneDrive, pen drive –
+sub-folders included) → **Start import**.
+
+- Names containing *Letter / Ltr / Notice / Reply / dated …* are filed as **Letters**; *Note…* files as Note Sheets;
+  everything else goes to the **Document Repository** with a guessed type (Drawing, MoM, IPC, EOT, BG, Test Report…).
+  Or choose "All as Letters" / "All as Documents".
+- Letter no., date, sender (AE/IE, Authority, Contractor), category (EOT, IPC, ROW, Utility…) and subject are read from the
+  file name and the text inside PDFs / Word files. That text is stored so **search finds words inside your documents**
+  (scanned PDFs have no text; they are imported but only searchable by name).
+- Files already imported are skipped, so you can run it again whenever new files arrive.
+- Command-line alternative: `python3 import_folder.py ~/Desktop/SAB "~/Library/CloudStorage/GoogleDrive-…/My Drive/SAB"`
+
+Review imported letters afterwards and set *Reply Required*, direction and status where needed.
+
 ## Other features
 - Dashboard: overdue replies (highlighted), letters awaiting reply, active disputes and next hearing dates, open claim
   value, latest DPR and MPR progress bars.
@@ -44,6 +60,9 @@ python seed_demo.py          # optional: load sample data to explore
 python run.py                # open http://127.0.0.1:5000
 ```
 
+**Easiest:** double-click **`Start SAB.command`** (Mac – first time right-click → Open) or
+**`Start SAB (Windows).bat`**. It installs what is needed, starts the app and opens http://127.0.0.1:8000.
+
 Share with your team on the site-office network: `python run.py --host 0.0.0.0` (or, for production,
 `waitress-serve --port=8000 wsgi:app`). There is no login yet, so only run it on a trusted network.
 
@@ -58,8 +77,9 @@ The model defaults to `claude-opus-5-5`; override with `SAB_CLAUDE_MODEL`. Witho
 uses template drafts.
 
 ### Where the data lives
-Everything is in the `data/` folder (`data/sab.sqlite3` + `data/uploads/`). **Back up this folder regularly.**
-Change the location with `SAB_DATA_DIR`. Set `SAB_SECRET_KEY` to a random value in production.
+Everything is in **`Documents/SAB-Data`** (`sab.sqlite3` + `uploads/`), outside the code folder, so downloading a
+new version of the app never touches your records. (If an older `data/` folder exists next to the code, that is used
+instead.) **Back up this folder regularly.** Change the location with `SAB_DATA_DIR`. Set `SAB_SECRET_KEY` to a random value in production.
 
 ## Customising
 All registers are defined in `sab/modules.py`. To add a field, category, activity or dispute status, add one line
@@ -72,11 +92,14 @@ python -m pytest -q
 
 ## Project layout
 ```
+Start SAB.command       double-click starter (Mac); "Start SAB (Windows).bat" for Windows
 run.py / wsgi.py        start the app
+import_folder.py        bulk-import folders from the command line
 seed_demo.py            sample data
 sab/modules.py          register definitions (fields, categories, activities, statuses)
 sab/db.py               SQLite storage
 sab/app.py              web routes (registers, dashboard, MPR generation, drafting, search, settings)
+sab/importer.py         bulk import: auto-filing, text extraction, duplicate check
 sab/drafting.py         letter / DRB template drafts and Claude AI drafting
 sab/templates/          HTML pages
 tests/                  automated tests

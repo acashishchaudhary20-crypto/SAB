@@ -24,6 +24,7 @@
       <a href="{{ url_for('list_view', module=key) }}"
          class="{{ 'active' if request.view_args and request.view_args.get('module')==key }}">{{ m.icon }} {{ m.title }}</a>
     {% endfor %}
+    <a href="{{ url_for('import_view') }}" class="{{ 'active' if request.endpoint=='import_view' }}">⇪ Bulk Import Files</a>
     <a href="{{ url_for('mpr_generate') }}" class="{{ 'active' if request.endpoint=='mpr_generate' }}">⚙ Generate MPR from DPRs</a>
     <a href="{{ url_for('settings_view') }}" class="{{ 'active' if request.endpoint=='settings_view' }}">⚙ Project Settings</a>
     <div class="ai-badge {{ 'on' if ai_available else 'off' }}">
