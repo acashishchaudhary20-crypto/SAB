@@ -42,6 +42,25 @@ sub-folders included) → **Start import**.
 
 Review imported letters afterwards and set *Reply Required*, direction and status where needed.
 
+## ✍ Make a Note / Letter from my records (on demand)
+
+Sidebar → **✍ Make Note / Letter**:
+
+1. Choose what to prepare – Note Sheet, Letter, Reply, Notice to Contractor, Office Order, MoM / Agenda, Brief for RO/HQ.
+2. Write what you need in plain words, e.g. *"Note for approval of provisional EOT-2 of 210 days for ROW delay at
+   Ch 12+300, based on IE letter 1056 and our letter 702"*. Optionally add who it is addressed / put up to and points
+   that must be included.
+3. **Find relevant records** – the system searches every imported letter, note sheet, document, DRB dispute and MPR
+   (including the text inside the files) and ticks the best matches. Tick / untick as needed.
+4. **Write it with AI** – Claude writes the complete note / letter using only the ticked records (it also reads scanned
+   PDFs), quotes letter numbers and dates exactly, puts `[placeholders]` instead of guessing, follows the format of your
+   own earlier Note Sheets / outgoing letters, and lists *Sources used* and *To verify* at the end.
+   Without an API key, **Make a blank format** gives the correct structure with the references filled in.
+5. Edit, then **Save** (notes → Document Repository as *Note Sheet*; letters → Correspondence as *Draft*) and
+   **Download Word (.docx)**.
+
+The more of your past notes and letters you import, the better it matches your office's format.
+
 ## Other features
 - Dashboard: overdue replies (highlighted), letters awaiting reply, active disputes and next hearing dates, open claim
   value, latest DPR and MPR progress bars.
@@ -99,6 +118,7 @@ seed_demo.py            sample data
 sab/modules.py          register definitions (fields, categories, activities, statuses)
 sab/db.py               SQLite storage
 sab/app.py              web routes (registers, dashboard, MPR generation, drafting, search, settings)
+sab/compose.py          on-demand notes / letters: record search, AI prompt, Word export
 sab/importer.py         bulk import: auto-filing, text extraction, duplicate check
 sab/drafting.py         letter / DRB template drafts and Claude AI drafting
 sab/templates/          HTML pages

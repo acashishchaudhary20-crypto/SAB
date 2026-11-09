@@ -10,6 +10,7 @@ from werkzeug.utils import secure_filename
 
 from . import db as store
 from . import drafting
+from . import compose
 from . import importer
 from .modules import MODULES, ROLES, SETTINGS_FIELDS, field_map
 
@@ -436,6 +437,83 @@ def _register_routes(app):
         n = sum(r["status"] == "imported" for r in results)
         flash(f"Imported {n} file(s); {len(results) - n} skipped.", "ok")
         return render_template("import.html", results=results, data_dir=os.path.dirname(app.config["DATABASE"]))
+
+    @app.route("/compose", methods=["GET", "POST"])
+    def compose_view():
+        f = request.form
+        ctx = {"kinds": compose.KINDS, "kind": f.get("kind", "note"), "request_text": f.get("request_text", ""),
+               "addressee": f.get("addressee", ""), "extra_points": f.get("extra_points", ""),
+               "candidates": None, "chosen": set(), "draft": None, "source": None}
+        action = f.get("action")
+        if request.method == "GET" or not action:
+            return render_template("compose.html", **ctx)
+        if not ctx["request_text"].strip():
+            flash("Describe what you need first.", "error")
+            return render_template("compose.html", **ctx)
+
+        if action == "save":
+            content = f.get("content", "").strip()
+            subject = f.get("subject", "").strip() or ctx["request_text"][:200]
+            if ctx["kind"] in ("note", "summary", "office_order", "agenda"):
+                rid = store.insert_record("documents", {
+                    "title": subject, "doc_type": "Note Sheet", "doc_date": date.today().isoformat(),
+                    "description": content})
+                flash("Saved in the Document Repository as a Note Sheet.", "ok")
+                return redirect(url_for("detail_view", module="documents", rid=rid))
+            role = store.get_settings().get("our_role")
+            rid = store.insert_record("letters", {
+                "ref_no": f.get("ref_no", "").strip() or f"DRAFT-{date.today():%Y%m%d}-{datetime.now():%H%M%S}",
+                "letter_date": date.today().isoformat(), "direction": "Outgoing", "from_party": role,
+                "subject": subject, "category": "General", "body": content, "reply_required": "No",
+                "status": "Draft", "ref_letters": f.get("ref_letters", "")})
+            flash("Saved in Correspondence as a Draft outgoing letter. Edit it to add the final letter no.", "ok")
+            return redirect(url_for("detail_view", module="letters", rid=rid))
+
+        found = compose.find_sources(ctx["request_text"] + " " + ctx["extra_points"] + " " + f.get("more", ""), limit=25)
+        chosen = set(f.getlist("src"))
+        if action == "find":
+            top = found[0]["score"] if found else 0
+            chosen = {f"{c['module']}:{c['id']}" for c in found[:8] if c["score"] >= top * 0.3}
+        # keep previously ticked sources visible even if they no longer rank
+        known = {f"{c['module']}:{c['id']}" for c in found}
+        for key in chosen - known:
+            m, _, i = key.partition(":")
+            row = store.get_record(m, int(i)) if m in compose.SOURCES and i.isdigit() else None
+            if row:
+                found.append({"module": m, "id": row["id"], "score": "✓", "label": compose.describe(m, row),
+                              "date": compose._date_of(m, row)})
+        ctx.update(candidates=found, chosen=chosen)
+
+        if action == "generate":
+            selected = []
+            for key in f.getlist("src"):
+                m, _, i = key.partition(":")
+                row = store.get_record(m, int(i)) if m in compose.SOURCES and i.isdigit() else None
+                if row:
+                    selected.append((m, row))
+            selected.sort(key=lambda mr: compose._date_of(*mr))
+            settings = store.get_settings()
+            draft = None
+            if f.get("engine") == "ai":
+                content = compose.build_content(ctx["kind"], ctx["request_text"], selected, settings,
+                                                app.config["UPLOAD_FOLDER"], ctx["extra_points"], ctx["addressee"])
+                draft, err = drafting.ai_draft(content, system=compose.SYSTEM)
+                if err:
+                    flash(err + " Showing the template instead.", "error")
+            ctx["source"] = "ai" if draft else "template"
+            ctx["draft"] = draft or compose.template(ctx["kind"], ctx["request_text"], selected, settings,
+                                                     ctx["addressee"], ctx["extra_points"])
+            ctx["ref_letters"] = ", ".join(r["ref_no"] for m, r in selected if m == "letters")
+        return render_template("compose.html", **ctx)
+
+    @app.route("/compose/docx", methods=["POST"])
+    def compose_docx():
+        content = request.form.get("content", "")
+        name = secure_filename((request.form.get("subject") or "draft")[:60]) or "draft"
+        path = os.path.join(app.config["UPLOAD_FOLDER"], ".incoming", f"{name}.docx")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        compose.to_docx(content, path)
+        return send_from_directory(os.path.dirname(path), os.path.basename(path), as_attachment=True)
 
     @app.route("/uploads/<path:name>")
     def uploaded(name):

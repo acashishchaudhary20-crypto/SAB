@@ -20,6 +20,7 @@
 <div class="layout">
   <nav class="sidebar">
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">◉ Dashboard</a>
+    <a href="{{ url_for('compose_view') }}" class="compose-link {{ 'active' if request.endpoint=='compose_view' }}">✍ Make Note / Letter</a>
     {% for key, m in MODULES.items() if not m.hidden %}
       <a href="{{ url_for('list_view', module=key) }}"
          class="{{ 'active' if request.view_args and request.view_args.get('module')==key }}">{{ m.icon }} {{ m.title }}</a>

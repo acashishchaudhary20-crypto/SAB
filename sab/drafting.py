@@ -235,8 +235,11 @@ def build_prompt(module, record, linked, entries, settings, kind, instructions="
     return "\n".join(parts)
 
 
-def ai_draft(prompt):
-    """Return (text, error). Uses Claude via the Anthropic SDK."""
+def ai_draft(prompt, system=SYSTEM_PROMPT):
+    """Return (text, error). Uses Claude via the Anthropic SDK.
+
+    `prompt` is a string or a list of content blocks (text and PDF documents).
+    """
     if not ai_available():
         return None, "AI drafting is not configured (set ANTHROPIC_API_KEY)."
     try:
@@ -252,7 +255,7 @@ def ai_draft(prompt):
             output_config={"effort": "high"},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
-            system=SYSTEM_PROMPT,
+            system=system,
             messages=[{"role": "user", "content": prompt}],
         )
     except anthropic.AuthenticationError:

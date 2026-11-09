@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Make Note / Letter{% endblock %}
+{% block content %}
+<h1>✍ Make a Note / Letter from my records</h1>
+<div class="steps">
+  <span class="on">1. Tell what you need</span>
+  <span class="{{ 'on' if candidates is not none }}">2. Confirm the source records</span>
+  <span class="{{ 'on' if draft }}">3. Review, save &amp; download Word</span>
+</div>
+
+<form method="post" class="card">
+  <div class="grid2">
+    <div>
+      <label><span>What to prepare</span>
+        <select name="kind">{% for k, v in kinds.items() %}<option value="{{ k }}" {{ 'selected' if k==kind }}>{{ v }}</option>{% endfor %}</select></label>
+      <label><span>What do you need? (write it the way you would tell your assistant)</span>
+        <textarea name="request_text" rows="5" required placeholder="e.g. Prepare a note for approval of provisional EOT-2 of 210 days to the contractor for delay in handing over ROW at Ch 12+300 to 13+100, based on IE letter 1056 and our letter 702.">{{ request_text }}</textarea></label>
+    </div>
+    <div>
+      <label><span>Addressed to / Put up to (optional)</span>
+        <input name="addressee" value="{{ addressee }}" placeholder="e.g. Project Director, PIU Ayodhya  /  M/s ABC Infra Ltd."></label>
+      <label><span>Points that must be included (optional)</span>
+        <textarea name="extra_points" rows="4" placeholder="e.g. Recommend 120 days only; cite Clause __; ask compliance within 7 days">{{ extra_points }}</textarea></label>
+      <label><span>Also look for (extra keywords, letter nos.)</span>
+        <input name="more" value="{{ request.form.get('more','') }}" placeholder="e.g. 702 1056 POWERGRID"></label>
+    </div>
+  </div>
+  <div class="actions"><button class="btn" name="action" value="find">🔎 Find relevant records</button></div>
+
+  {% if candidates is not none %}
+  <h2 style="margin-top:16px">Source records to use</h2>
+  {% if candidates %}
+    <p class="small muted">Best matches are ticked. Tick / untick as needed — only ticked records are used. Add keywords above and press Find again to see more.</p>
+    <div class="src-list">
+      {% for c in candidates %}{% set key = c.module ~ ':' ~ c.id %}
+      <label><input type="checkbox" name="src" value="{{ key }}" {{ 'checked' if key in chosen }}>
+        <span><a href="{{ url_for('detail_view', module=c.module, rid=c.id) }}" target="_blank">{{ c.label }}</a></span>
+        <span class="src-score">{{ c.score }}</span></label>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">No matching records found. Import your files first (⇪ Bulk Import Files), or try other keywords / letter numbers.</p>
+  {% endif %}
+  <div class="actions" style="margin-top:12px">
+    <input type="hidden" name="engine" id="engine" value="template">
+    <button class="btn" name="action" value="generate" onclick="document.getElementById('engine').value='ai'" {{ 'disabled' if not ai_available }}>✨ Write it with AI (reads the records &amp; scanned PDFs)</button>
+    <button class="btn ghost" name="action" value="generate" onclick="document.getElementById('engine').value='template'">Make a blank format with references</button>
+  </div>
+  {% if not ai_available %}<p class="small muted">AI writing is off — set <code>ANTHROPIC_API_KEY</code> and restart to have the full note / letter written for you. The blank format still works.</p>
+  {% else %}<p class="small muted">Takes about a minute. Your earlier Note Sheets / outgoing letters in the system are used as format examples.</p>{% endif %}
+  {% endif %}
+</form>
+
+{% if draft %}
+<form method="post" class="card">
+  <h2>Draft <small class="muted">({{ 'written by AI' if source=='ai' else 'format' }})</small></h2>
+  <input type="hidden" name="kind" value="{{ kind }}">
+  <input type="hidden" name="request_text" value="{{ request_text }}">
+  <input type="hidden" name="ref_letters" value="{{ ref_letters }}">
+  <div class="grid2">
+    <label><span>Subject / title to save under</span><input name="subject" value="{{ request_text.split('\n')[0][:200] }}"></label>
+    {% if kind not in ('note','summary','office_order','agenda') %}
+    <label><span>Letter no. (optional – can be added later)</span><input name="ref_no"></label>
+    {% endif %}
+  </div>
+  <textarea name="content" rows="34" class="mono">{{ draft }}</textarea>
+  <p class="small muted">Check every fact, number, date and clause against the sources before signing.</p>
+  <div class="actions">
+    <button class="btn" name="action" value="save">💾 Save to {{ 'Note Sheets' if kind in ('note','summary','office_order','agenda') else 'Correspondence (Draft)' }}</button>
+    <button class="btn ghost" formaction="{{ url_for('compose_docx') }}">⬇ Download Word (.docx)</button>
+    <button type="button" class="btn ghost" onclick="navigator.clipboard.writeText(this.form.content.value)">Copy</button>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

@@ -69,7 +69,7 @@ MODULES = {
             ("body", "Letter Text / Summary", "textarea", None),
             ("reply_required", "Reply Required?", "select", ["No", "Yes"]),
             ("reply_due", "Reply Due By", "date", None),
-            ("status", "Status", "select", ["Open", "Replied", "Closed", "For Information"]),
+            ("status", "Status", "select", ["Draft", "Open", "Replied", "Closed", "For Information"]),
             ("attachment", "Attachment (PDF / scan)", "file", None),
         ],
         "list": ["ref_no", "letter_date", "direction", "from_party", "subject",

@@ -144,3 +144,52 @@ def test_bulk_import(client):
                     content_type="multipart/form-data")
     assert r.get_json()["results"][0]["note"] == "already imported"
     assert client.get("/import").status_code == 200
+
+
+def _seed_compose(client):
+    client.post("/m/letters/new", data={"ref_no": "IE/1056", "letter_date": "2026-09-14", "subject": "EOT-2 recommendation",
+                                        "body": "IE recommends provisional EOT of 120 days for ROW delay at Ch 12+300",
+                                        "from_party": "Authority's Engineer"})
+    client.post("/m/letters/new", data={"ref_no": "PIU/702", "letter_date": "2026-08-01", "subject": "ROW handover",
+                                        "body": "ROW at Ch 12+300 handed over"})
+    client.post("/m/documents/new", data={"title": "Bitumen test report", "doc_type": "Test Report"})
+
+
+def test_compose_find_and_template(client):
+    _seed_compose(client)
+    r = client.post("/compose", data={"kind": "note", "request_text": "Note for approval of EOT-2 for ROW delay", "action": "find"})
+    assert b"IE/1056" in r.data and b"PIU/702" in r.data and b"Bitumen" not in r.data
+    r = client.post("/compose", data={"kind": "note", "request_text": "Note for approval of EOT-2 for ROW delay",
+                                      "action": "generate", "engine": "template", "src": ["letters:1", "letters:2"]})
+    body = r.data.decode().split('name="content"')[1]
+    assert "Submitted for kind perusal" in body and body.index("PIU/702") < body.index("IE/1056")  # chronological
+    r = client.post("/compose", data={"kind": "note", "request_text": "EOT-2 note", "action": "save",
+                                      "content": "NOTE\nSub: EOT-2", "subject": "EOT-2 note"}, follow_redirects=True)
+    assert b"Note Sheet" in r.data
+    r = client.post("/compose/docx", data={"content": "NOTE\nSub: EOT-2", "subject": "EOT-2 note"})
+    assert r.status_code == 200 and r.data[:2] == b"PK"
+
+
+def test_compose_letter_ai(client, monkeypatch):
+    import types
+
+    import anthropic
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kw):
+            captured.update(kw)
+            return types.SimpleNamespace(stop_reason="end_turn", content=[types.SimpleNamespace(type="text", text="LETTER BODY")])
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda *a, **k: types.SimpleNamespace(beta=types.SimpleNamespace(messages=FakeMessages())))
+    _seed_compose(client)
+    r = client.post("/compose", data={"kind": "letter", "request_text": "Letter to contractor on EOT-2", "addressee": "M/s ABC",
+                                      "action": "generate", "engine": "ai", "src": ["letters:1"]})
+    assert b"LETTER BODY" in r.data
+    text = captured["messages"][0]["content"][-1]["text"]
+    assert "IE/1056" in text and "M/s ABC" in text and "PIU/702" not in text
+    assert "SOURCE RECORDS" in text and "Never invent" in captured["system"]
+    r = client.post("/compose", data={"kind": "letter", "request_text": "Letter to contractor on EOT-2", "action": "save",
+                                      "content": "LETTER BODY", "subject": "EOT-2", "ref_letters": "IE/1056"}, follow_redirects=True)
+    assert b"Draft" in r.data and b"IE/1056" in r.data
