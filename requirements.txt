@@ -3,4 +3,6 @@ anthropic>=0.70   # optional: AI drafting of replies / DRB submissions
 waitress>=3.0     # optional: production server on Windows/Linux
 pypdf>=4.0         # reads text inside PDFs during bulk import (search + auto-filing)
 python-docx>=1.1    # Word download of composed notes / letters
+shapely>=2.0      # Land / Survey Map: areas, ROW buffer, affected survey numbers
+pyshp>=2.3        # Land / Survey Map: read zipped Shapefiles of village maps
 pytest>=8.0       # tests

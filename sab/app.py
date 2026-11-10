@@ -14,6 +14,7 @@ from . import assistant
 from . import compose
 from . import sync
 from . import importer
+from . import landmap
 from .modules import MODULES, ROLES, SETTINGS_FIELDS, field_map
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,8 +75,10 @@ def create_app(test_config=None):
         return f"{f:,.0f}" if f == int(f) else f"{f:,.2f}"
 
     _register_routes(app)
+    app.register_blueprint(landmap.bp)
     with app.app_context():
         sync.ensure_tables(store.get_db())
+        landmap.ensure_tables(store.get_db())
         try:
             minutes = int(store.get_settings().get("sync_minutes") or 10)
         except ValueError:

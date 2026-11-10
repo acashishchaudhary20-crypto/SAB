@@ -26,6 +26,27 @@ On any letter or dispute click **Answer** / **Draft DRB submission**:
 
 Drafts are a starting point: check every fact, date, amount and clause before issue.
 
+## 🗺 Land / Survey Map – survey (gata / khasra) numbers + highway alignment KML
+
+Sidebar → **🗺 Land / Survey Map**. A map (satellite / street / topo) of the villages of **Ayodhya, Basti,
+Siddharthnagar and Balrampur** with every survey number you have imported.
+
+1. **Import Maps** – upload the village cadastral maps you have (digitised Bhu-Naksha / revenue maps, CALA or
+   LA-consultant khasra maps) as **KML, KMZ, GeoJSON or zipped Shapefile**, one polygon per survey number. Choose the
+   district, type tehsil and village – or tick *Village name = file name* to load many village files at once, or leave the
+   village blank when the file has a village column. The survey-no. column (gata, khasra, survey, plot_no, name…) and
+   UTM 44N vs lat/long coordinates are detected automatically. DXF/DWG: convert to KML or Shapefile in QGIS first.
+2. **Villages** – District → Tehsil → Village tree; click a village to open it. Zoom 15+ shows every survey number in
+   view, zoom 17+ labels them; click a plot for its area and all attributes from the file (owner, khata…).
+3. **Find Gata** – search a survey number in all districts, one district or the selected village.
+4. **Alignments** – upload your highway alignment KML/KMZ (centre line and/or ROW polygons), set ROW width and start
+   chainage, then **Find affected survey numbers**: every gata in the ROW with total area, affected area (ha / m²), % of
+   plot, chainage from–to and side (LHS / RHS / Both), village-wise totals, and downloads as **Excel/CSV** (land schedule
+   for 3A) and **KML** for Google Earth. Areas are computed in UTM zone 44N metres.
+
+The system does not download maps from Bhu-Naksha itself; an optional WMS overlay can be added on the Import Maps tab if
+you have a cadastral WMS link. Map tiles need internet; everything else works offline.
+
 ## 🔗 Connected Folders – Desktop, OneDrive, Google Drive always up to date
 
 Sidebar → **🔗 Connected Folders** → **⚡ Connect Desktop + all cloud drives found** (or connect only chosen project

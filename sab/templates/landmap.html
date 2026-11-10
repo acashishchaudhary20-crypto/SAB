@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+{% block title %}Land / Survey Map{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<style>
+  main { padding: 12px; }
+  .lm { display: grid; grid-template-columns: 360px 1fr; gap: 12px; height: calc(100vh - 80px); }
+  .lm-side { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .lm-side .card { margin: 0; padding: 12px; }
+  #map { height: 100%; border-radius: 8px; border: 1px solid var(--line); }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tabs button { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 6px 4px; cursor: pointer; font: inherit; font-size: 12px; }
+  .tabs button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .tab { display: none; } .tab.on { display: block; }
+  .tree details { margin-left: 6px; } .tree summary { cursor: pointer; padding: 3px 0; font-weight: 600; }
+  .tree .v { display: flex; justify-content: space-between; align-items: center; padding: 3px 6px; border-radius: 4px; cursor: pointer; margin-left: 14px; }
+  .tree .v:hover, .tree .v.on { background: #e8f1f7; }
+  .tree .v .x { visibility: hidden; color: var(--warn); border: 0; background: none; cursor: pointer; }
+  .tree .v:hover .x { visibility: visible; }
+  .list { max-height: 330px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+  .list div { padding: 5px 8px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+  .list div:hover { background: #e8f1f7; }
+  .lm label { margin-bottom: 6px; } .lm input, .lm select { width: 100%; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .al { border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+  .al .sw { display: inline-block; width: 14px; height: 4px; vertical-align: middle; margin-right: 6px; }
+  .al .chk { width: auto; }
+  table.res { font-size: 12px; } table.res td, table.res th { padding: 4px 5px; }
+  table.res tr:hover td { background: #e8f1f7; cursor: pointer; }
+  .gata-label { background: transparent; border: 0; box-shadow: none; color: #111; font-weight: 700; font-size: 11px;
+                text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff; padding: 0; }
+  .gata-label::before { display: none; }
+  .coords { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(255,255,255,.85);
+            padding: 1px 8px; border-radius: 4px; font-size: 11px; }
+  .mapwrap { position: relative; }
+  .hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(255,255,255,.92);
+          padding: 4px 10px; border-radius: 6px; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  .popup-t td, .popup-t th { padding: 2px 6px; font-size: 12px; border-bottom: 1px solid #eee; }
+  .popup-t { max-height: 220px; overflow-y: auto; display: block; }
+  @media (max-width: 900px) { .lm { grid-template-columns: 1fr; height: auto; } #map { height: 70vh; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="lm">
+  <div class="lm-side">
+    <div class="card">
+      <div class="head" style="margin:0 0 6px"><h2 style="margin:0">🗺 Land / Survey Map</h2>
+        <span class="small muted" id="totalCount">{{ parcel_total }} survey nos.</span></div>
+      <div class="tabs">
+        <button data-t="tVillages" class="on">Villages</button>
+        <button data-t="tSearch">Find Gata</button>
+        <button data-t="tAlign">Alignments</button>
+        <button data-t="tImport">Import Maps</button>
+      </div>
+    </div>
+
+    <!-- Villages tree -->
+    <div class="card tab on" id="tVillages">
+      <p class="small muted" style="margin-top:0">District → Tehsil → Village. Click a village to open all its survey numbers.
+        Zoom in on the map (level 15+) to see every survey number in view; numbers are labelled from level 17.</p>
+      <div class="tree" id="tree">Loading…</div>
+    </div>
+
+    <!-- Search -->
+    <div class="card tab" id="tSearch">
+      <label><span>Survey / Gata / Khasra No.</span><input id="q" placeholder="e.g. 245 or 245/1" autocomplete="off"></label>
+      <label><span>Look in</span>
+        <select id="qScope"><option value="">All districts</option>
+          {% for d in districts %}<option value="d:{{ d }}">{{ d }}</option>{% endfor %}
+          <option value="v" id="qScopeV" disabled>Selected village only</option></select></label>
+      <div class="list" id="qRes"></div>
+    </div>
+
+    <!-- Alignments -->
+    <div class="card tab" id="tAlign">
+      <h3 style="margin-top:0">Upload highway alignment</h3>
+      <form method="post" action="{{ url_for('landmap.add_alignment') }}" enctype="multipart/form-data">
+        <label><span>KML / KMZ (centre line and/or ROW polygons) – several files allowed</span>
+          <input type="file" name="files" accept=".kml,.kmz,.geojson,.json,.zip" multiple required></label>
+        <label><span>Name (optional)</span><input name="name" placeholder="e.g. Southern Bypass – Final alignment"></label>
+        <div class="row2">
+          <label><span>ROW width (m)</span><input name="row_width" type="number" step="0.1" value="60"></label>
+          <label><span>Start chainage (m)</span><input name="start_chainage" type="number" step="0.001" value="0"></label>
+        </div>
+        <button class="btn">⇪ Add alignment</button>
+      </form>
+      <h3>Alignments on map</h3>
+      <div id="alList" class="small">Loading…</div>
+      <div id="results"></div>
+    </div>
+
+    <!-- Import -->
+    <div class="card tab" id="tImport">
+      <h3 style="margin-top:0">Import village cadastral maps (survey numbers)</h3>
+      <p class="small muted" style="margin-top:0">Upload the village maps you have – digitised Bhu-Naksha / revenue maps, CALA or
+        LA-consultant khasra maps – as <b>KML, KMZ, GeoJSON or zipped Shapefile</b> (one polygon per survey number).
+        One file per village, or one file for many villages with a village column.</p>
+      <form method="post" action="{{ url_for('landmap.import_view') }}" enctype="multipart/form-data">
+        <label><span>Files</span><input type="file" name="files" accept=".kml,.kmz,.geojson,.json,.zip" multiple required></label>
+        <div class="row2">
+          <label><span>District</span><select name="district">
+            {% for d in districts %}<option>{{ d }}</option>{% endfor %}<option value="">(from file column)</option></select></label>
+          <label><span>Tehsil</span><input name="tehsil" placeholder="e.g. Sadar"></label>
+        </div>
+        <label><span>Village (blank = read from file column)</span><input name="village" placeholder="e.g. Majha Barehta"></label>
+        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="village_from_filename" value="1" style="width:auto">
+          <span style="font-weight:400">Village name = file name (for many files, one per village)</span></label>
+        <details class="small"><summary>Advanced: column names, coordinates</summary>
+          <label><span>Survey-no. column (blank = auto: gata, khasra, survey, plot_no, name…)</span><input name="survey_field"></label>
+          <label><span>Village column (blank = auto)</span><input name="village_field"></label>
+          <label><span>Coordinates</span><select name="crs">
+            <option value="auto">Auto-detect (WGS84 lat/long or UTM 44N)</option>
+            <option value="wgs84">WGS84 latitude / longitude</option>
+            <option value="utm">UTM zone 44N metres (WGS84)</option></select></label>
+          <label><span>If the village already exists</span><select name="existing">
+            <option value="replace">Replace its survey numbers</option><option value="add">Add to it</option></select></label>
+        </details>
+        <button class="btn">⇪ Import</button>
+      </form>
+      <h3>Where to get village maps</h3>
+      <ul class="small" style="padding-left:16px;margin:0">
+        <li><a href="https://upbhunaksha.gov.in/" target="_blank" rel="noopener">UP Bhu-Naksha</a> – official village cadastral maps (view / print);
+          <a href="https://upbhulekh.gov.in/" target="_blank" rel="noopener">UP Bhulekh</a> – khatauni / owner of a gata.</li>
+        <li>Tehsil / CALA office, or the LA / DPR consultant: digitised khasra maps (usually Shapefile, DXF or KML).
+          DXF / DWG: convert to KML or Shapefile in QGIS first.</li>
+        <li>If you have a WMS link for cadastral maps, add it as an overlay below.</li>
+      </ul>
+      <h3>Extra map overlay (WMS)</h3>
+      <label><span>WMS URL</span><input id="wmsUrl" placeholder="https://…/wms"></label>
+      <label><span>Layer name(s)</span><input id="wmsLayers"></label>
+      <div class="actions"><button class="btn sm" id="wmsAdd" type="button">Add overlay</button>
+        <button class="btn sm ghost" id="wmsClear" type="button">Remove</button></div>
+    </div>
+  </div>
+
+  <div class="mapwrap">
+    <div id="map"></div>
+    <div class="hint" id="hint" style="display:none"></div>
+    <div class="coords" id="coords"></div>
+  </div>
+</div>
+
+<script>
+const API = "{{ url_for('landmap.page') }}".replace(/\/$/, "");
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const store = { get(k){ try { return localStorage.getItem(k); } catch(e) { return null; } },
+                set(k,v){ try { localStorage.setItem(k,v); } catch(e) {} } };
+
+// ---------- tabs
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.id === b.dataset.t));
+  store.set("lm_tab", b.dataset.t);
+});
+{% with m = get_flashed_messages() %}{% if not m %}
+const savedTab = store.get("lm_tab"); if (savedTab) { const b = document.querySelector(`.tabs button[data-t="${savedTab}"]`); b && b.click(); }
+{% endif %}{% endwith %}
+
+// ---------- map
+const map = L.map("map", { preferCanvas: true }).setView([26.79, 82.2], 10);   // Ayodhya
+const base = {
+  "Street map (OSM)": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      { maxZoom: 20, maxNativeZoom: 19, attribution: "© OpenStreetMap contributors" }),
+  "Satellite (Esri)": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 20, maxNativeZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" }),
+  "Topographic": L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+      { maxZoom: 20, maxNativeZoom: 17, attribution: "© OpenTopoMap (CC-BY-SA)" }),
+};
+(base[store.get("lm_base")] || base["Satellite (Esri)"]).addTo(map);
+map.on("baselayerchange", e => store.set("lm_base", e.name));
+const parcelStyle = { color: "#ffb000", weight: 1.2, fillColor: "#ffd166", fillOpacity: 0.08 };
+const parcels = L.geoJSON(null, { style: () => parcelStyle, onEachFeature: bindParcel });
+const labels = L.layerGroup();
+const villageBoxes = L.layerGroup();
+const alignLayer = L.layerGroup();
+const affected = L.geoJSON(null, { style: { color: "#d00000", weight: 2, fillColor: "#ff0000", fillOpacity: 0.35 },
+                                   onEachFeature: bindParcel });
+const corridorLayer = L.geoJSON(null, { style: { color: "#d00000", weight: 1, dashArray: "6 4", fill: false } });
+const highlight = L.geoJSON(null, { style: { color: "#00e5ff", weight: 4, fill: false } });
+[parcels, labels, villageBoxes, alignLayer, corridorLayer, affected, highlight].forEach(l => l.addTo(map));
+const layersCtl = L.control.layers(base, { "Survey numbers": parcels, "Gata labels": labels, "Village extents": villageBoxes,
+  "Alignments": alignLayer, "ROW corridor": corridorLayer, "Affected survey nos.": affected }, { collapsed: true }).addTo(map);
+L.control.scale({ imperial: false }).addTo(map);
+map.on("mousemove", e => $("#coords").textContent = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}  ·  zoom ${map.getZoom()}`);
+
+let wms = null;
+function addWms(url, layers) {
+  if (wms) map.removeLayer(wms), layersCtl.removeLayer(wms);
+  if (!url) return;
+  wms = L.tileLayer.wms(url, { layers, format: "image/png", transparent: true, maxZoom: 22 }).addTo(map);
+  layersCtl.addOverlay(wms, "WMS overlay");
+}
+$("#wmsUrl").value = store.get("lm_wms") || ""; $("#wmsLayers").value = store.get("lm_wmsl") || "";
+if ($("#wmsUrl").value) addWms($("#wmsUrl").value, $("#wmsLayers").value);
+$("#wmsAdd").onclick = () => { store.set("lm_wms", $("#wmsUrl").value); store.set("lm_wmsl", $("#wmsLayers").value); addWms($("#wmsUrl").value, $("#wmsLayers").value); };
+$("#wmsClear").onclick = () => { store.set("lm_wms", ""); addWms(""); };
+
+function attrsTable(a) {
+  const rows = Object.entries(a || {}).filter(([k, v]) => v !== "" && v != null);
+  return rows.length ? `<table class="popup-t">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>` : "";
+}
+function bindParcel(f, layer) {
+  layer.on("click", () => {
+    const p = f.properties;
+    highlight.clearLayers().addData(f);
+    layer.bindPopup(`<b>Gata / Survey No. ${esc(p.survey_no)}</b><br>${esc(p.village)}${p.tehsil && p.tehsil !== "-" ? ", " + esc(p.tehsil) : ""}, ${esc(p.district)}
+      <br>Area: <b>${(+p.area_ha).toFixed(4)} ha</b> (${Math.round(p.area_ha * 10000).toLocaleString()} m²)
+      ${p.affected_ha != null ? `<br><span style="color:#d00000">Affected: <b>${p.affected_ha} ha</b> (${p.pct}%) · Ch ${p.ch_from_txt || ""}–${p.ch_to_txt || ""} ${p.side || ""}</span>` : ""}
+      ${attrsTable(p.attrs)}`, { maxWidth: 360 }).openPopup();
+  });
+}
+
+// ---------- parcels in view
+let tree = {}, selectedVillage = null, loadTimer = null, lastKey = "";
+function refreshParcels() {
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(async () => {
+    const z = map.getZoom();
+    if (z < 15) {
+      parcels.clearLayers(); labels.clearLayers(); lastKey = "";
+      showHint(Object.keys(tree).length ? "Zoom in (or click a village) to see survey numbers" : "Import village maps to see survey numbers (Import Maps tab)");
+      return;
+    }
+    const b = map.getBounds().pad(0.2);
+    const key = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(x => x.toFixed(4)).join(",");
+    if (key === lastKey) return drawLabels();
+    lastKey = key;
+    const r = await fetch(`${API}/api/parcels?bbox=${key}`).then(r => r.json());
+    parcels.clearLayers().addData(r);
+    showHint(r.truncated ? "Too many survey numbers in view – zoom in further" : (r.features.length ? "" : "No survey numbers imported here"));
+    drawLabels();
+  }, 250);
+}
+function drawLabels() {
+  labels.clearLayers();
+  if (map.getZoom() < 17) return;
+  const view = map.getBounds(); let n = 0;
+  parcels.eachLayer(l => {
+    if (n > 1500) return;
+    const c = l.getBounds().getCenter();
+    if (!view.contains(c)) return;
+    n++;
+    L.tooltip({ permanent: true, direction: "center", className: "gata-label", interactive: false })
+      .setLatLng(polyLabelPoint(l) || c).setContent(esc(l.feature.properties.survey_no)).addTo(labels);
+  });
+}
+function polyLabelPoint(layer) {  // centroid of the largest ring – stays inside most plots
+  try {
+    let ll = layer.getLatLngs(); while (Array.isArray(ll[0]) && Array.isArray(ll[0][0])) ll = ll[0];
+    const ring = Array.isArray(ll[0]) ? ll[0] : ll;
+    let a = 0, x = 0, y = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const f = ring[j].lng * ring[i].lat - ring[i].lng * ring[j].lat;
+      a += f; x += (ring[j].lng + ring[i].lng) * f; y += (ring[j].lat + ring[i].lat) * f;
+    }
+    if (!a) return null;
+    return L.latLng(y / (3 * a), x / (3 * a));
+  } catch (e) { return null; }
+}
+function showHint(t) { $("#hint").style.display = t ? "" : "none"; $("#hint").textContent = t; }
+map.on("moveend", refreshParcels);
+
+// ---------- villages tree
+async function loadTree() {
+  tree = await fetch(`${API}/api/tree`).then(r => r.json());
+  const ds = Object.keys(tree);
+  villageBoxes.clearLayers();
+  let total = 0;
+  if (!ds.length) { $("#tree").innerHTML = `<p class="muted small">No village maps yet. Use <b>Import Maps</b> to add the cadastral (khasra / gata) maps of Ayodhya, Basti, Siddharthnagar and Balrampur villages.</p>`; refreshParcels(); return; }
+  $("#tree").innerHTML = ds.map(d => {
+    const ts = tree[d];
+    const nv = Object.values(ts).reduce((s, a) => s + a.length, 0);
+    return `<details open><summary>${esc(d)} <span class="muted small">(${nv} villages)</span></summary>` +
+      Object.keys(ts).map(t => `<details ${Object.keys(ts).length < 4 ? "open" : ""}><summary>${t === "-" ? "<i>Tehsil not given</i>" : "Tehsil " + esc(t)} <span class="muted small">(${ts[t].length})</span></summary>` +
+        ts[t].map(v => { total += v.count; return `<div class="v" data-id="${v.id}"><span>${esc(v.village)} <span class="muted small">${v.count}</span></span>
+          <button class="x" title="Delete this village's map" data-del="${v.id}">✕</button></div>`; }).join("") + `</details>`).join("") + `</details>`;
+  }).join("");
+  $("#totalCount").textContent = `${total.toLocaleString()} survey nos.`;
+  for (const d of ds) for (const t in tree[d]) for (const v of tree[d][t]) {
+    if (v.bbox[0] == null) continue;
+    L.rectangle([[v.bbox[1], v.bbox[0]], [v.bbox[3], v.bbox[2]]], { color: "#0b5c8a", weight: 1, fill: true, fillOpacity: 0.03, dashArray: "4 3" })
+      .bindTooltip(`${v.village} (${v.count})`).on("click", () => openVillage(v.id)).addTo(villageBoxes);
+  }
+  document.querySelectorAll("#tree .v").forEach(el => el.onclick = e => {
+    if (e.target.dataset.del) return deleteVillage(e.target.dataset.del, e.target.closest(".v").innerText.split("\n")[0]);
+    openVillage(+el.dataset.id);
+  });
+  refreshParcels();
+}
+function findVillage(id) { for (const d in tree) for (const t in tree[d]) for (const v of tree[d][t]) if (v.id === id) return Object.assign({ district: d, tehsil: t }, v); }
+function openVillage(id) {
+  const v = findVillage(id); if (!v) return;
+  selectedVillage = v;
+  document.querySelectorAll("#tree .v").forEach(el => el.classList.toggle("on", +el.dataset.id === id));
+  $("#qScopeV").disabled = false; $("#qScopeV").textContent = `Village ${v.village} only`;
+  map.fitBounds([[v.bbox[1], v.bbox[0]], [v.bbox[3], v.bbox[2]]], { maxZoom: 17 });
+  if (map.getZoom() < 15) map.setZoom(15);
+}
+async function deleteVillage(id, name) {
+  if (!confirm(`Delete the map of ${name}? (You can import it again.)`)) return;
+  await fetch(`${API}/village/${id}/delete`, { method: "POST" }); lastKey = ""; loadTree();
+}
+
+// ---------- search
+let qTimer;
+$("#q").oninput = $("#qScope").onchange = () => { clearTimeout(qTimer); qTimer = setTimeout(doSearch, 250); };
+async function doSearch() {
+  const q = $("#q").value.trim(); if (!q) { $("#qRes").innerHTML = ""; return; }
+  const sc = $("#qScope").value; let extra = "";
+  if (sc.startsWith("d:")) extra = `&district=${encodeURIComponent(sc.slice(2))}`;
+  if (sc === "v" && selectedVillage) extra = `&village_id=${selectedVillage.id}`;
+  const rows = await fetch(`${API}/api/search?q=${encodeURIComponent(q)}${extra}`).then(r => r.json());
+  $("#qRes").innerHTML = rows.length ? rows.map((r, i) => `<div data-i="${i}"><b>${esc(r.survey_no)}</b> · ${esc(r.village)}
+      <span class="muted small">${esc(r.tehsil || "")} ${esc(r.district)} · ${(+r.area_ha).toFixed(4)} ha</span></div>`).join("")
+    : `<div class="muted">Not found in the imported village maps.</div>`;
+  $("#qRes").querySelectorAll("[data-i]").forEach(el => el.onclick = () => zoomToParcel(rows[+el.dataset.i]));
+}
+function zoomToParcel(r) {
+  map.fitBounds([[r.miny, r.minx], [r.maxy, r.maxx]], { maxZoom: 18, padding: [40, 40] });
+  map.once("moveend", () => setTimeout(() => parcels.eachLayer(l => {
+    if (l.feature.id === (r.id || r.parcel_id)) l.fire("click");
+  }), 600));
+}
+
+// ---------- alignments & analysis
+let aligns = [];
+async function loadAlignments() {
+  aligns = await fetch(`${API}/api/alignments`).then(r => r.json());
+  alignLayer.clearLayers();
+  if (!aligns.length) { $("#alList").innerHTML = `<p class="muted">No alignment yet – upload your KML above.</p>`; return; }
+  $("#alList").innerHTML = aligns.map(a => `<div class="al" data-id="${a.id}">
+      <div class="head" style="margin:0"><label style="flex-direction:row;gap:6px;align-items:center;margin:0">
+        <input type="checkbox" class="chk" checked data-show="${a.id}"><span class="sw" style="background:${a.color}"></span><b>${esc(a.name)}</b></label>
+        <span><button class="btn sm ghost" data-zoom="${a.id}">Zoom</button> <button class="btn sm danger" data-adel="${a.id}">✕</button></span></div>
+      <div class="row2" style="margin-top:6px">
+        <label><span>ROW width (m)</span><input type="number" step="0.1" value="${a.row_width}" data-w="${a.id}"></label>
+        <label><span>Start chainage (m)</span><input type="number" step="0.001" value="${a.start_chainage}" data-s="${a.id}"></label></div>
+      <label><span>Land to acquire =</span><select data-m="${a.id}"><option value="auto">Auto (ROW polygons if in KML, else buffer)</option>
+        <option value="buffer">Centre line ± ROW width / 2</option><option value="polygon">ROW / LA polygons in the KML</option></select></label>
+      <button class="btn sm" data-an="${a.id}">▶ Find affected survey numbers</button></div>`).join("");
+  aligns.forEach(a => {
+    a.layer = L.geoJSON(a.geojson, {
+      style: f => f.geometry.type.includes("Polygon") ? { color: a.color, weight: 2, fillOpacity: 0.12 } : { color: a.color, weight: 4 },
+      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 4, color: a.color }),
+      onEachFeature: (f, l) => l.bindPopup(`<b>${esc(a.name)}</b>${attrsTable(f.properties)}`),
+    }).addTo(alignLayer);
+  });
+  $("#alList").querySelectorAll("[data-show]").forEach(c => c.onchange = () => {
+    const a = aligns.find(x => x.id === +c.dataset.show); c.checked ? alignLayer.addLayer(a.layer) : alignLayer.removeLayer(a.layer); });
+  $("#alList").querySelectorAll("[data-zoom]").forEach(b => b.onclick = () => map.fitBounds(aligns.find(x => x.id === +b.dataset.zoom).layer.getBounds()));
+  $("#alList").querySelectorAll("[data-adel]").forEach(b => b.onclick = async () => {
+    if (!confirm("Remove this alignment?")) return;
+    await fetch(`${API}/alignments/${b.dataset.adel}/delete`, { method: "POST" }); loadAlignments(); });
+  $("#alList").querySelectorAll("[data-an]").forEach(b => b.onclick = () => runAnalysis(+b.dataset.an));
+}
+function analysisQuery(id) {
+  return `width=${encodeURIComponent($(`[data-w="${id}"]`).value)}&start=${encodeURIComponent($(`[data-s="${id}"]`).value)}&mode=${$(`[data-m="${id}"]`).value}`;
+}
+async function runAnalysis(id) {
+  $("#results").innerHTML = `<p class="muted">Calculating…</p>`;
+  const qs = analysisQuery(id);
+  const res = await fetch(`${API}/api/analyse/${id}?${qs}`).then(r => r.json());
+  if (res.error) { $("#results").innerHTML = `<div class="flash error">${esc(res.error)}</div>`; return; }
+  corridorLayer.clearLayers().addData(res.corridor);
+  affected.clearLayers();
+  const byId = {}; res.parcels.forEach(p => byId[p.parcel_id] = p);
+  // fetch the affected parcel shapes from the villages involved
+  const vids = new Set();
+  for (const d in tree) for (const t in tree[d]) for (const v of tree[d][t])
+    if (res.villages.some(x => x.village === v.village && x.district === d && (x.tehsil || "-") === t)) vids.add(v.id);
+  for (const vid of vids) {
+    const fc = await fetch(`${API}/api/village/${vid}`).then(r => r.json());
+    fc.features = fc.features.filter(f => byId[f.id]).map(f => (Object.assign(f.properties, byId[f.id]), f));
+    affected.addData(fc);
+  }
+  if (res.parcels.length) map.fitBounds(affected.getBounds()); else map.fitBounds(corridorLayer.getBounds());
+  $("#results").innerHTML = `<h3>Result – ${esc(res.alignment.name)}</h3>
+    <p class="small">${res.mode === "polygon" ? "ROW polygons from the KML" : `Centre line ± ${res.width / 2} m (ROW ${res.width} m)`}
+      ${res.length_km != null ? ` · length ${res.length_km} km` : ""} · corridor ${res.corridor_ha} ha<br>
+      <b>${res.parcels.length}</b> survey numbers in <b>${res.villages.length}</b> villages · affected <b>${res.total_affected_ha} ha</b>
+      ${res.parcels.length ? "" : "<br><span class='muted'>None found – are the village maps along this alignment imported?</span>"}</p>
+    <div class="actions" style="margin-bottom:8px"><a class="btn sm" href="${API}/analyse/${id}.csv?${qs}">⬇ Excel / CSV list</a>
+      <a class="btn sm ghost" href="${API}/analyse/${id}.kml?${qs}">⬇ KML for Google Earth</a></div>
+    ${res.villages.length ? `<table class="res"><tr><th>Village</th><th>Tehsil</th><th>Nos.</th><th>Affected ha</th></tr>
+      ${res.villages.map(v => `<tr><td>${esc(v.village)}</td><td>${esc(v.tehsil)}</td><td>${v.count}</td><td>${v.affected_ha}</td></tr>`).join("")}</table><br>` : ""}
+    ${res.parcels.length ? `<div class="table-wrap" style="max-height:420px;overflow:auto"><table class="res" id="resTable"><tr><th>#</th><th>Village</th><th>Gata</th>
+      <th>Affected ha</th><th>%</th><th>Chainage</th><th>Side</th></tr>
+      ${res.parcels.map((p, i) => `<tr data-i="${i}"><td>${p.sno}</td><td>${esc(p.village)}</td><td><b>${esc(p.survey_no)}</b></td><td>${p.affected_ha}</td>
+        <td>${p.pct}</td><td class="nowrap">${p.ch_from_txt}${p.ch_to_txt && p.ch_to_txt !== p.ch_from_txt ? "–" + p.ch_to_txt : ""}</td><td>${p.side}</td></tr>`).join("")}</table></div>` : ""}`;
+  document.querySelectorAll("#resTable tr[data-i]").forEach(tr => tr.onclick = () => {
+    const p = res.parcels[+tr.dataset.i];
+    affected.eachLayer(l => { if (l.feature.id === p.parcel_id) { map.fitBounds(l.getBounds(), { maxZoom: 18, padding: [40, 40] }); l.fire("click"); } });
+  });
+}
+
+loadTree().then(() => {
+  // first visit: zoom to imported data or the alignment
+  loadAlignments().then(() => {
+    const all = L.featureGroup([...villageBoxes.getLayers(), ...aligns.map(a => a.layer)]);
+    if (all.getLayers().length && !store.get("lm_view")) map.fitBounds(all.getBounds());
+    const v = store.get("lm_view"); if (v) { const [la, ln, z] = v.split(","); map.setView([+la, +ln], +z); }
+    map.on("moveend", () => store.set("lm_view", `${map.getCenter().lat},${map.getCenter().lng},${map.getZoom()}`));
+  });
+});
+</script>
+{% endblock %}

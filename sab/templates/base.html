@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ settings.project_name }}{% endblock %} · SAB</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
 </head>
 <body>
 <header class="topbar">
@@ -26,6 +27,7 @@
       <a href="{{ url_for('list_view', module=key) }}"
          class="{{ 'active' if request.view_args and request.view_args.get('module')==key }}">{{ m.icon }} {{ m.title }}</a>
     {% endfor %}
+    <a href="{{ url_for('landmap.page') }}" class="{{ 'active' if request.blueprint=='landmap' }}">🗺 Land / Survey Map</a>
     <a href="{{ url_for('sync_view') }}" class="{{ 'active' if request.endpoint=='sync_view' }}">🔗 Connected Folders</a>
     <a href="{{ url_for('import_view') }}" class="{{ 'active' if request.endpoint=='import_view' }}">⇪ Bulk Import Files</a>
     <a href="{{ url_for('mpr_generate') }}" class="{{ 'active' if request.endpoint=='mpr_generate' }}">⚙ Generate MPR from DPRs</a>
