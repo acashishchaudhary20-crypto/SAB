@@ -84,6 +84,12 @@ Sidebar → **✍ Make Note / Letter**:
 
 The more of your past notes and letters you import, the better it matches your office's format.
 
+## 📮 Dak Courier – letters from any folder to the Claude Dak Register
+
+`dak/` holds a separate small script for the office Dak / Inward-Outward registers kept by Claude. It copies
+letters found in folders that Google Drive does not sync into the Drive folder *Dak Inbox*, from where the
+scheduled Claude sync files them. Double-click `dak/Start Dak Courier.command`; details in `dak/README.md`.
+
 ## Other features
 - Dashboard: overdue replies (highlighted), letters awaiting reply, active disputes and next hearing dates, open claim
   value, latest DPR and MPR progress bars.
@@ -141,6 +147,7 @@ Start SAB.command       double-click starter (Mac); "Start SAB (Windows).bat" fo
 run.py / wsgi.py        start the app
 import_folder.py        bulk-import folders from the command line
 seed_demo.py            sample data
+dak/                    Dak Courier: letters from local folders to the Google Drive Dak Inbox (see dak/README.md)
 sab/modules.py          register definitions (fields, categories, activities, statuses)
 sab/db.py               SQLite storage
 sab/app.py              web routes (registers, dashboard, MPR generation, drafting, search, settings)
